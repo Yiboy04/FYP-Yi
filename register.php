@@ -21,25 +21,43 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
     $phone    = $_POST['phone'];
     $role     = $_POST['role']; // buyer or seller
 
-    if ($password !== $confirm) {
+    // --- Validate email format ---
+    if (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
+        $error = "This is not a valid email address.";
+    } 
+    // --- Check duplicate email ---
+    else {
+        $check = $conn->prepare("SELECT id FROM users WHERE email = ?");
+        $check->bind_param("s", $email);
+        $check->execute();
+        $check->store_result();
+
+        if ($check->num_rows > 0) {
+            $error = "This email has already been taken.";
+        }
+        $check->close();
+    }
+
+    // --- Check password confirmation ---
+    if (empty($error) && $password !== $confirm) {
         $error = "Passwords do not match!";
-    } else {
-        // Hash password
+    }
+
+    // --- Register user if no error ---
+    if (empty($error)) {
         $hashedPassword = password_hash($password, PASSWORD_DEFAULT);
 
-        // Insert into users table
         $stmt = $conn->prepare("INSERT INTO users (name, email, password, phone, role) VALUES (?, ?, ?, ?, ?)");
         $stmt->bind_param("sssss", $name, $email, $hashedPassword, $phone, $role);
 
         if ($stmt->execute()) {
-            // Instead of redirecting immediately, show popup then redirect
             echo "<script>
-                    alert('Registration Successful! Please login.');
-                    window.location.href = 'login.php';
-                  </script>";
+                alert('✅ Registration successful! Please log in.');
+                window.location.href='login.php';
+            </script>";
             exit();
         } else {
-            $error = "Registration failed. Email may already exist.";
+            $error = "Registration failed. Please try again.";
         }
         $stmt->close();
     }

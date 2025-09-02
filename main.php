@@ -18,7 +18,7 @@ session_start();
       <nav>
         <ul class="flex gap-6">
           <li><a href="main.php" class="hover:underline">Home</a></li>
-          <li><a href="#" class="hover:underline">Listings</a></li>
+          <li><a href="car_view.php" class="hover:underline">Listings</a></li>
           <li><a href="#" class="hover:underline">About</a></li>
           <li><a href="logout.php" class="hover:underline">Logout</a></li>
         </ul>
