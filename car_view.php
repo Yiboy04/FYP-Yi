@@ -1,22 +1,25 @@
 <?php
-$imageDir = __DIR__ . "/pictures";
+// helper function to get images from folder
+function getImages($folder) {
+    $imageDir = __DIR__ . "/pictures/$folder";
+    if (!is_dir($imageDir)) return [];
 
-// Find all files in the folder
-$allFiles = scandir($imageDir);
-
-// Collect only images with their filemtime
-$imageFiles = [];
-foreach ($allFiles as $file) {
-    $filePath = $imageDir . "/" . $file;
-    if (is_file($filePath) && preg_match('/\.(jpg|jpeg|png|gif)$/i', $file)) {
-        $imageFiles[$file] = filemtime($filePath); // store last modified time
+    $allFiles = scandir($imageDir);
+    $imageFiles = [];
+    foreach ($allFiles as $file) {
+        $filePath = $imageDir . "/" . $file;
+        if (is_file($filePath) && preg_match('/\.(jpg|jpeg|png|gif)$/i', $file)) {
+            $imageFiles[$file] = filemtime($filePath);
+        }
     }
+    arsort($imageFiles); // newest first
+    return array_keys($imageFiles);
 }
 
-// Sort by time DESC (newest first)
-arsort($imageFiles);
+// get both sets
+$exteriorImages = getImages('exterior');
+$interiorImages = getImages('interior');
 ?>
-
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -63,6 +66,10 @@ arsort($imageFiles);
       0% { transform: rotate(0deg); }
       100% { transform: rotate(360deg); }
     }
+    button:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
   </style>
 </head>
 <body class="bg-gray-100">
@@ -88,13 +95,32 @@ arsort($imageFiles);
   <!-- MAIN CONTENT -->
   <main class="container mx-auto py-10">
     <h2 class="text-3xl font-bold text-center mb-6 text-gray-800">360° Car View</h2>
-    <h2 class="text-3xl font-bold text-center mb-6 text-gray-800">Toyota Supra MK4</h2>
-    <p class="text-center text-gray-600 mb-6">Click and drag the car image or use <kbd class="bg-gray-200 px-2 py-1 rounded">←</kbd> <kbd class="bg-gray-200 px-2 py-1 rounded">→</kbd> keys to rotate.</p>
+    <h2 class="text-3xl font-bold text-center mb-6 text-gray-800">1995 MK4 Toyota Supra 3.0</h2>
+    <p class="text-center text-gray-600 mb-6">Click and drag or use <kbd class="bg-gray-200 px-2 py-1 rounded">←</kbd><kbd class="bg-gray-200 px-2 py-1 rounded">→</kbd> keys.</p>
+
+    <!-- Toggle Buttons -->
+    <div class="flex justify-center mb-4 gap-4">
+      <button id="showExterior" 
+              class="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded"
+              <?php echo empty($exteriorImages) ? 'disabled' : ''; ?>>
+        Exterior
+      </button>
+      <button id="showInterior" 
+              class="bg-gray-600 hover:bg-gray-700 text-white px-4 py-2 rounded"
+              <?php echo empty($interiorImages) ? 'disabled' : ''; ?>>
+        Interior
+      </button>
+    </div>
+
     <div id="car-container">
-      <?php $first = true; ?>
-      <?php foreach ($imageFiles as $file => $time): ?>
-        <img src="pictures/<?php echo $file; ?>" class="<?php echo $first ? 'active' : ''; ?>">
-        <?php $first = false; ?>
+      <!-- Exterior images -->
+      <?php $first = true; foreach ($exteriorImages as $file): ?>
+        <img src="pictures/exterior/<?php echo $file; ?>" data-set="exterior" class="<?php echo $first ? 'active' : ''; ?>">
+        <?php $first = false; endforeach; ?>
+
+      <!-- Interior images (hidden initially) -->
+      <?php foreach ($interiorImages as $file): ?>
+        <img src="pictures/interior/<?php echo $file; ?>" data-set="interior">
       <?php endforeach; ?>
     </div>
   </main>
@@ -112,14 +138,23 @@ arsort($imageFiles);
       document.getElementById("preloader").style.display = "none";
     };
 
-    const images = document.querySelectorAll("#car-container img");
+    let images = document.querySelectorAll("#car-container img[data-set='exterior']");
     let currentIndex = 0;
     let isDragging = false;
     let startX = 0;
+    let currentSet = 'exterior';
 
     const container = document.getElementById("car-container");
 
+    function updateImageList(set) {
+      images = document.querySelectorAll(`#car-container img[data-set='${set}']`);
+      currentIndex = 0;
+      document.querySelectorAll("#car-container img").forEach(img => img.classList.remove("active"));
+      if (images.length > 0) images[0].classList.add("active");
+    }
+
     function showImage(index) {
+      if (images.length === 0) return;
       images[currentIndex].classList.remove("active");
       currentIndex = (index + images.length) % images.length;
       images[currentIndex].classList.add("active");
@@ -131,11 +166,7 @@ arsort($imageFiles);
       isDragging = true;
       startX = e.clientX;
     });
-
-    document.addEventListener("mouseup", () => {
-      isDragging = false;
-    });
-
+    document.addEventListener("mouseup", () => { isDragging = false; });
     container.addEventListener("mousemove", e => {
       if (!isDragging) return;
       const diff = e.clientX - startX;
@@ -156,6 +187,16 @@ arsort($imageFiles);
       } else if (e.key === "ArrowLeft") {
         showImage(currentIndex - 1);
       }
+    });
+
+    // Toggle buttons
+    document.getElementById("showExterior")?.addEventListener("click", () => {
+      currentSet = 'exterior';
+      updateImageList('exterior');
+    });
+    document.getElementById("showInterior")?.addEventListener("click", () => {
+      currentSet = 'interior';
+      updateImageList('interior');
     });
   </script>
 </body>
