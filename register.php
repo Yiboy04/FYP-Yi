@@ -24,14 +24,16 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
     // --- Validate email format ---
     if (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
         $error = "This is not a valid email address.";
-    } 
-    // --- Check duplicate email ---
-    else {
-        $check = $conn->prepare("SELECT id FROM users WHERE email = ?");
+    } else {
+        // Check duplicate email in BOTH tables
+        if ($role == 'buyer') {
+            $check = $conn->prepare("SELECT id FROM buyers WHERE email = ?");
+        } else {
+            $check = $conn->prepare("SELECT id FROM sellers WHERE email = ?");
+        }
         $check->bind_param("s", $email);
         $check->execute();
         $check->store_result();
-
         if ($check->num_rows > 0) {
             $error = "This email has already been taken.";
         }
@@ -47,8 +49,14 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
     if (empty($error)) {
         $hashedPassword = password_hash($password, PASSWORD_DEFAULT);
 
-        $stmt = $conn->prepare("INSERT INTO users (name, email, password, phone, role) VALUES (?, ?, ?, ?, ?)");
-        $stmt->bind_param("sssss", $name, $email, $hashedPassword, $phone, $role);
+        if ($role == 'buyer') {
+            $stmt = $conn->prepare("INSERT INTO buyers (name, email, password, phone) VALUES (?, ?, ?, ?)");
+            $stmt->bind_param("ssss", $name, $email, $hashedPassword, $phone);
+        } else {
+            // seller registration: car_id will be NULL initially
+            $stmt = $conn->prepare("INSERT INTO sellers (name, email, password, phone, car_id) VALUES (?, ?, ?, ?, NULL)");
+            $stmt->bind_param("ssss", $name, $email, $hashedPassword, $phone);
+        }
 
         if ($stmt->execute()) {
             echo "<script>
@@ -63,6 +71,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
     }
 }
 ?>
+
 <!DOCTYPE html>
 <html lang="en">
 <head>

@@ -18,27 +18,55 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
     $email = $_POST['email'];
     $pass = $_POST['password'];
 
-    $stmt = $conn->prepare("SELECT id, password FROM users WHERE email = ?");
+    $redirect = ""; // store where to redirect
+    $userFound = false;
+
+    // 1️⃣ Try buyers table first
+    $stmt = $conn->prepare("SELECT id, password, name FROM buyers WHERE email = ?");
     $stmt->bind_param("s", $email);
     $stmt->execute();
     $stmt->store_result();
-
     if ($stmt->num_rows > 0) {
-        $stmt->bind_result($id, $hashedPassword);
+        $stmt->bind_result($id, $hashedPassword, $name);
         $stmt->fetch();
-
         if (password_verify($pass, $hashedPassword)) {
             $_SESSION['user_id'] = $id;
-            $_SESSION['email'] = $email;
-            header("Location: main.php");
-            exit();
-        } else {
-            $error = "Incorrect password"; 
+            $_SESSION['email']   = $email;
+            $_SESSION['name']    = $name;
+            $_SESSION['role']    = 'buyer';
+            $userFound = true;
+            $redirect = "main.php"; // buyers go here
         }
-    } else {
-        $error = "Email not found"; 
     }
     $stmt->close();
+
+    // 2️⃣ If not buyer, try sellers table
+    if (!$userFound) {
+        $stmt = $conn->prepare("SELECT id, password, name FROM sellers WHERE email = ?");
+        $stmt->bind_param("s", $email);
+        $stmt->execute();
+        $stmt->store_result();
+        if ($stmt->num_rows > 0) {
+            $stmt->bind_result($id, $hashedPassword, $name);
+            $stmt->fetch();
+            if (password_verify($pass, $hashedPassword)) {
+                $_SESSION['user_id'] = $id;
+                $_SESSION['email']   = $email;
+                $_SESSION['name']    = $name;
+                $_SESSION['role']    = 'seller';
+                $userFound = true;
+                $redirect = "seller_main.php"; // sellers go here
+            }
+        }
+        $stmt->close();
+    }
+
+    if ($userFound) {
+        header("Location: $redirect");
+        exit();
+    } else {
+        $error = "Invalid email or password";
+    }
 }
 ?>
 <!DOCTYPE html>

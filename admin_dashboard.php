@@ -10,10 +10,15 @@ if ($mysqli->connect_errno) {
     die("Connection failed: " . $mysqli->connect_error);
 }
 
-// count users
-$countResult = $mysqli->query("SELECT COUNT(*) as total FROM users");
-$row = $countResult->fetch_assoc();
-$totalUsers = $row['total'];
+// count buyers
+$countBuyersResult = $mysqli->query("SELECT COUNT(*) as total FROM buyers");
+$rowBuyers = $countBuyersResult->fetch_assoc();
+$totalBuyers = $rowBuyers['total'];
+
+// count sellers
+$countSellersResult = $mysqli->query("SELECT COUNT(*) as total FROM sellers");
+$rowSellers = $countSellersResult->fetch_assoc();
+$totalSellers = $rowSellers['total'];
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -36,15 +41,18 @@ $totalUsers = $row['total'];
 </header>
 
 <div class="container mx-auto mt-10">
-  <h2 class="text-xl font-bold mb-6">Welcome, <?php echo $_SESSION['admin_name']; ?>!</h2>
+  <h2 class="text-xl font-bold mb-6">Welcome, <?php echo htmlspecialchars($_SESSION['admin_name']); ?>!</h2>
 
-  <!-- Users count box -->
+  <!-- Buyers and Sellers count boxes -->
   <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
-    <a href="admin_users.php" class="bg-white rounded-xl shadow hover:shadow-lg p-6 flex flex-col items-center">
-      <div class="text-4xl font-bold text-red-600"><?php echo $totalUsers; ?></div>
-      <div class="mt-2 text-gray-600">Total Users</div>
+    <a href="admin_users.php?type=buyers" class="bg-white rounded-xl shadow hover:shadow-lg p-6 flex flex-col items-center">
+      <div class="text-4xl font-bold text-red-600"><?php echo $totalBuyers; ?></div>
+      <div class="mt-2 text-gray-600">Total Buyers</div>
     </a>
-    <!-- you can add more boxes later (eg: total cars, etc.) -->
+    <a href="admin_users.php?type=sellers" class="bg-white rounded-xl shadow hover:shadow-lg p-6 flex flex-col items-center">
+      <div class="text-4xl font-bold text-red-600"><?php echo $totalSellers; ?></div>
+      <div class="mt-2 text-gray-600">Total Sellers</div>
+    </a>
   </div>
 </div>
 </body>
