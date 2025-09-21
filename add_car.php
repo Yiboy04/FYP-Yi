@@ -10,15 +10,15 @@ $seller_id = $_SESSION['seller_id']; // make sure you set seller_id in login
 $make = $_POST['make'];
 $model = $_POST['model'];
 $year = $_POST['year'];
-$engine_capacity = $_POST['engine_capacity'];
 $transmission = $_POST['transmission'];
-$color = $_POST['color'];
-$price = $_POST['price'];
-
-// Insert car info
-$stmt = $mysqli->prepare("INSERT INTO cars (seller_id, make, model, year, engine_capacity, transmission, color, price) 
-VALUES (?, ?, ?, ?, ?, ?, ?, ?)");
-$stmt->bind_param("ississss", $seller_id, $make, $model, $year, $engine_capacity, $transmission, $color, $price);
+engine_capacity = $_POST['engine_capacity']; // value from dropdown, e.g. '1.5'
+price = $_POST['price'];
+$stmt = $mysqli->prepare("INSERT INTO cars (seller_id, make, model, year, engine_capacity, mileage, transmission, color, price, fuel, drive_system, doors) 
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
+$stmt->bind_param("issisissdssi", $seller_id, $make, $model, $year, $engine_capacity, $mileage, $transmission, $color, $price, $fuel, $drive_system, $doors);
+$stmt = $mysqli->prepare("INSERT INTO cars (seller_id, make, model, year, engine_capacity, mileage, transmission, price, fuel, drive_system, doors) 
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
+$stmt->bind_param("issisisdssii", $seller_id, $make, $model, $year, $engine_capacity, $mileage, $transmission, $price, $fuel, $drive_system, $doors);
 $stmt->execute();
 $car_id = $stmt->insert_id;
 $stmt->close();

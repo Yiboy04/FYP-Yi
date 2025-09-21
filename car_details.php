@@ -26,6 +26,51 @@ $imgQ->execute();
 $resImg = $imgQ->get_result();
 while ($row = $resImg->fetch_assoc()) $imgs[] = $row['image_path'];
 $imgQ->close();
+
+// fetch car_details
+$details = $mysqli->prepare("SELECT color, horsepower, engine_code, gear_numbers, wheel_size, seller_note FROM car_details WHERE car_id=?");
+$details->bind_param("i", $car_id);
+$details->execute();
+$car_details = $details->get_result()->fetch_assoc();
+$details->close();
+
+// If no car_details row exists, insert one
+if (!$car_details) {
+    $ins = $mysqli->prepare("INSERT INTO car_details (car_id) VALUES (?)");
+    $ins->bind_param("i", $car_id);
+    $ins->execute();
+    $ins->close();
+    // Re-fetch after insert
+    $details = $mysqli->prepare("SELECT color, horsepower, engine_code, gear_numbers, wheel_size, seller_note FROM car_details WHERE car_id=?");
+    $details->bind_param("i", $car_id);
+    $details->execute();
+    $car_details = $details->get_result()->fetch_assoc();
+    $details->close();
+}
+
+// handle car_details update
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update_details'])) {
+    $color = $mysqli->real_escape_string($_POST['color']);
+    $horsepower = intval($_POST['horsepower']);
+    $engine_code = $mysqli->real_escape_string($_POST['engine_code']);
+    $gear_numbers = intval($_POST['gear_numbers']);
+    $wheel_size = $mysqli->real_escape_string($_POST['wheel_size']);
+    $stmt = $mysqli->prepare("UPDATE car_details SET color=?, horsepower=?, engine_code=?, gear_numbers=?, wheel_size=? WHERE car_id=?");
+    $stmt->bind_param("sisisi", $color, $horsepower, $engine_code, $gear_numbers, $wheel_size, $car_id);
+    $stmt->execute();
+    $stmt->close();
+    header("Location: car_details.php?car_id=$car_id");
+    exit();
+}
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update_note'])) {
+    $seller_note = $mysqli->real_escape_string($_POST['seller_note']);
+    $stmt = $mysqli->prepare("UPDATE car_details SET seller_note=? WHERE car_id=?");
+    $stmt->bind_param("si", $seller_note, $car_id);
+    $stmt->execute();
+    $stmt->close();
+    header("Location: car_details.php?car_id=$car_id");
+    exit();
+}
 ?>
 <!doctype html>
 <html lang="en">
@@ -62,19 +107,44 @@ function changeMain(src){
         <?php else: ?>
           <div class="w-full h-80 bg-gray-200 flex items-center justify-center text-gray-400 rounded">No images</div>
         <?php endif; ?>
+        <form method="post" class="mt-6">
+          <label class="block font-semibold mb-2 text-blue-600" for="seller_note">Seller's Note</label>
+          <textarea name="seller_note" id="seller_note" placeholder="Seller's Note" class="border p-3 rounded w-full h-32 resize-none mb-2"><?php echo htmlspecialchars($car_details['seller_note'] ?? ''); ?></textarea>
+          <div class="flex justify-end">
+            <button type="submit" name="update_note" class="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700">Save Note</button>
+          </div>
+        </form>
       </div>
-
       <!-- Right: details -->
       <div>
         <h2 class="text-2xl font-bold mb-2"><?php echo htmlspecialchars($car['make'].' '.$car['model']); ?></h2>
         <div class="text-red-600 text-xl font-bold mb-4">RM<?php echo number_format($car['price'],2); ?></div>
-        <table class="w-full text-left border-collapse">
-          <tr><th class="py-1">Year</th><td class="py-1"><?php echo htmlspecialchars($car['year']); ?></td></tr>
-          <tr><th class="py-1">Color</th><td class="py-1"><?php echo htmlspecialchars($car['color']); ?></td></tr>
-          <tr><th class="py-1">Engine Capacity</th><td class="py-1"><?php echo htmlspecialchars($car['engine_capacity']); ?> cc</td></tr>
-          <tr><th class="py-1">Transmission</th><td class="py-1"><?php echo htmlspecialchars($car['transmission']); ?></td></tr>
-          <!-- add more rows if you add more columns like mileage etc. -->
-        </table>
+        <div class="bg-gray-50 rounded-lg shadow p-4 mb-4">
+          <h3 class="text-lg font-semibold mb-2 text-red-600">Overview</h3>
+          <div class="grid grid-cols-2 gap-x-6 gap-y-2">
+            <div><span class="font-semibold">Year:</span> <?php echo htmlspecialchars($car['year']); ?></div>
+            <div><span class="font-semibold">Variant:</span> <?php echo htmlspecialchars($car['variant']); ?></div>
+            <div><span class="font-semibold">Mileage:</span> <?php echo htmlspecialchars($car['mileage']); ?> km</div>
+            <div><span class="font-semibold">Transmission:</span> <?php echo htmlspecialchars($car['transmission']); ?></div>
+            <div><span class="font-semibold">Engine Capacity:</span> <?php echo htmlspecialchars($car['engine_capacity']); ?> L</div>
+            <div><span class="font-semibold">Fuel:</span> <?php echo htmlspecialchars($car['fuel']); ?></div>
+            <div><span class="font-semibold">Drive System:</span> <?php echo htmlspecialchars($car['drive_system']); ?></div>
+            <div><span class="font-semibold">Doors:</span> <?php echo htmlspecialchars($car['doors']); ?>D</div>
+          </div>
+        </div>
+        <div class="bg-gray-50 rounded-lg shadow p-4 mb-4">
+          <h3 class="text-lg font-semibold mb-2 text-blue-600">Car Details</h3>
+          <form method="post" class="grid grid-cols-2 gap-4">
+            <input type="text" name="color" value="<?php echo htmlspecialchars($car_details['color'] ?? ''); ?>" placeholder="Color" class="border p-2 rounded">
+            <input type="number" name="horsepower" value="<?php echo htmlspecialchars($car_details['horsepower'] ?? ''); ?>" placeholder="Horsepower" class="border p-2 rounded">
+            <input type="text" name="engine_code" value="<?php echo htmlspecialchars($car_details['engine_code'] ?? ''); ?>" placeholder="Engine Code" class="border p-2 rounded">
+            <input type="number" name="gear_numbers" value="<?php echo htmlspecialchars($car_details['gear_numbers'] ?? ''); ?>" placeholder="Gear Numbers" class="border p-2 rounded">
+            <input type="text" name="wheel_size" value="<?php echo htmlspecialchars($car_details['wheel_size'] ?? ''); ?>" placeholder="Wheel Size" class="border p-2 rounded">
+            <div class="col-span-2 flex justify-end">
+              <button type="submit" name="update_details" class="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700">Save Details</button>
+            </div>
+          </form>
+        </div>
       </div>
     </div>
   </div>
