@@ -1,6 +1,20 @@
 <?php
 // main.php
 session_start();
+$mysqli = new mysqli("localhost", "root", "", "fyp");
+if ($mysqli->connect_errno) {
+    die("DB error: " . $mysqli->connect_error);
+}
+// Fetch makes and models from database
+$makes = [];
+$models = [];
+$resMakes = $mysqli->query("SELECT DISTINCT make FROM cars ORDER BY make ASC");
+while ($row = $resMakes->fetch_assoc()) $makes[] = $row['make'];
+if (isset($_GET['make']) && $_GET['make'] !== '') {
+    $make = $mysqli->real_escape_string($_GET['make']);
+    $resModels = $mysqli->query("SELECT DISTINCT model FROM cars WHERE make='$make' ORDER BY model ASC");
+    while ($row = $resModels->fetch_assoc()) $models[] = $row['model'];
+}
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -34,27 +48,24 @@ session_start();
       <h2 class="text-2xl font-bold mb-4">Find Used Cars</h2>
 
       <!-- Make & Model -->
+      <form method="get" action="list_cars.php">
       <div class="grid grid-cols-2 gap-4 mb-4">
         <div>
           <label class="block mb-1">Make</label>
-          <select class="w-full p-2 border rounded">
+          <select class="w-full p-2 border rounded" name="make" id="makeSelect">
             <option value="">Select Make</option>
-            <option value="Toyota">Toyota</option>
-            <option value="Honda">Honda</option>
-            <option value="Nissan">Nissan</option>
-            <option value="Mazda">Mazda</option>
-            <option value="Mitsubishi">Mitsubishi</option>
+            <?php foreach($makes as $m): ?>
+              <option value="<?php echo htmlspecialchars($m); ?>" <?php if(isset($_GET['make']) && $_GET['make']==$m) echo 'selected'; ?>><?php echo htmlspecialchars($m); ?></option>
+            <?php endforeach; ?>
           </select>
         </div>
         <div>
           <label class="block mb-1">Model</label>
-          <select class="w-full p-2 border rounded">
+          <select class="w-full p-2 border rounded" name="model" id="modelSelect">
             <option value="">Select Model</option>
-            <option value="Corolla">Corolla</option>
-            <option value="Civic">Civic</option>
-            <option value="Skyline">Skyline</option>
-            <option value="RX-7">RX-7</option>
-            <option value="Lancer Evolution">Lancer Evolution</option>
+            <?php foreach($models as $mod): ?>
+              <option value="<?php echo htmlspecialchars($mod); ?>" <?php if(isset($_GET['model']) && $_GET['model']==$mod) echo 'selected'; ?>><?php echo htmlspecialchars($mod); ?></option>
+            <?php endforeach; ?>
           </select>
         </div>
       </div>
@@ -78,7 +89,21 @@ session_start();
         </button>
       </div>
 
+      <input type="hidden" name="minYear" value="<?php echo isset($_GET['minYear']) ? intval($_GET['minYear']) : 1957; ?>">
+      <input type="hidden" name="maxYear" value="<?php echo isset($_GET['maxYear']) ? intval($_GET['maxYear']) : 2025; ?>">
+      <input type="hidden" name="minPrice" value="<?php echo isset($_GET['minPrice']) ? intval($_GET['minPrice']) : 1; ?>">
+      <input type="hidden" name="maxPrice" value="<?php echo isset($_GET['maxPrice']) ? intval($_GET['maxPrice']) : 100000000; ?>">
       <button class="w-full bg-red-600 text-white py-2 rounded-lg text-lg font-semibold">Search</button>
+      </form>
+      <script>
+        document.getElementById('makeSelect').addEventListener('change', function() {
+          const make = this.value;
+          const url = new URL(window.location.href);
+          url.searchParams.set('make', make);
+          url.searchParams.delete('model'); // reset model selection
+          window.location.href = url.toString();
+        });
+      </script>
     </div>
   </main>
 
