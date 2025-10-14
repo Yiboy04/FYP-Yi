@@ -47,7 +47,17 @@ function changeMain(src){
 <header class="bg-red-600 text-white p-4">
   <div class="container mx-auto flex justify-between items-center">
     <h1 class="text-2xl font-bold">Car Details</h1>
-    <a href="main.php" class="underline">Back</a>
+  <?php
+  // build back link that preserves previous filters if present
+  $backUrl = 'list_cars.php';
+  if (!empty($_SERVER['QUERY_STRING'])) {
+    // If car_id is present in query string, remove it
+    parse_str($_SERVER['QUERY_STRING'], $qs);
+    if (isset($qs['car_id'])) unset($qs['car_id']);
+    if (!empty($qs)) $backUrl .= '?' . http_build_query($qs);
+  }
+  ?>
+  <a href="<?php echo htmlspecialchars($backUrl); ?>" class="underline">Back</a>
   </div>
 </header>
 <main class="container mx-auto mt-8">

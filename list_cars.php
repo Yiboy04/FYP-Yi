@@ -21,6 +21,28 @@ $where[] = "price>=$minPrice AND price<=$maxPrice";
 $whereSQL = count($where) ? 'WHERE ' . implode(' AND ', $where) : '';
 $sql = "SELECT * FROM cars $whereSQL ORDER BY price DESC";
 $res = $mysqli->query($sql);
+// Preload thumbnails for cars in result to avoid N+1 queries
+$carIds = [];
+if ($res) {
+  while ($r = $res->fetch_assoc()) {
+    $carIds[] = $r['car_id'];
+    $rows[] = $r; // keep rows in memory to iterate later
+  }
+} else {
+  $rows = [];
+}
+
+// fetch thumbnails: prefer is_thumbnail=1, otherwise first image
+$thumbnails = [];
+if (count($carIds) > 0) {
+  $ids = implode(',', array_map('intval', $carIds));
+  $q = $mysqli->query("SELECT car_id, image_path, is_thumbnail FROM car_images WHERE car_id IN ($ids) ORDER BY is_thumbnail DESC, image_id ASC");
+  while ($img = $q->fetch_assoc()) {
+    if (!isset($thumbnails[$img['car_id']])) {
+      $thumbnails[$img['car_id']] = $img['image_path'];
+    }
+  }
+}
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -77,18 +99,19 @@ $res = $mysqli->query($sql);
   <!-- Car List -->
   <section class="flex-1">
     <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-      <?php while($car = $res->fetch_assoc()): ?>
+      <?php foreach($rows as $car): ?>
+        <?php $thumb = $thumbnails[$car['car_id']] ?? 'https://via.placeholder.com/300x200?text=No+Image'; ?>
         <div class="bg-white rounded-xl shadow hover:shadow-lg p-4 flex flex-col">
-          <img src="<?php echo htmlspecialchars($car['car_id'] ? ($mysqli->query("SELECT image_path FROM car_images WHERE car_id=".$car['car_id']." LIMIT 1")->fetch_assoc()['image_path'] ?? 'https://via.placeholder.com/300x200?text=No+Image') : 'https://via.placeholder.com/300x200?text=No+Image'); ?>" class="w-full h-40 object-cover rounded mb-2">
+          <img src="<?php echo htmlspecialchars($thumb); ?>" class="w-full h-40 object-cover rounded mb-2">
           <h3 class="text-lg font-bold mb-1"><?php echo htmlspecialchars($car['make'].' '.$car['model']); ?></h3>
           <div class="text-red-600 font-bold mb-2">RM <?php echo number_format($car['price'],2); ?></div>
           <div class="text-sm text-gray-600 mb-2">
             Year: <?php echo htmlspecialchars($car['year']); ?> | Mileage: <?php echo htmlspecialchars($car['mileage']); ?> km
           </div>
           <div class="flex-1"></div>
-          <a href="car_details_view.php?car_id=<?php echo $car['car_id']; ?>" class="mt-2 w-full bg-blue-600 text-white py-2 rounded-lg text-center font-semibold">View Details</a>
+          <a href="car_details_view.php?car_id=<?php echo $car['car_id']; ?><?php if(!empty($_SERVER['QUERY_STRING'])) echo '&'.htmlspecialchars($_SERVER['QUERY_STRING']); ?>" class="mt-2 w-full bg-blue-600 text-white py-2 rounded-lg text-center font-semibold">View Details</a>
         </div>
-      <?php endwhile; ?>
+      <?php endforeach; ?>
       <?php if($res->num_rows==0): ?>
         <div class="col-span-3 text-center text-gray-500 py-12">No cars found matching your criteria.</div>
       <?php endif; ?>
