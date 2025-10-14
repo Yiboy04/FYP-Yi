@@ -24,8 +24,8 @@ $imgQ->execute();
 $resImg = $imgQ->get_result();
 while ($row = $resImg->fetch_assoc()) $imgs[] = $row['image_path'];
 $imgQ->close();
-// fetch car_details
-$details = $mysqli->prepare("SELECT color, horsepower, engine_code, gear_numbers, wheel_size, seller_note FROM car_details WHERE car_id=?");
+// fetch car_details (include optional car_condition)
+$details = $mysqli->prepare("SELECT color, horsepower, engine_code, gear_numbers, wheel_size, seller_note, car_condition FROM car_details WHERE car_id=?");
 $details->bind_param("i", $car_id);
 $details->execute();
 $car_details = $details->get_result()->fetch_assoc();
@@ -105,6 +105,9 @@ function changeMain(src){
             <div class="text-gray-700"><span class="font-semibold">Engine Code:</span> <?php echo htmlspecialchars($car_details['engine_code'] ?? ''); ?></div>
             <div class="text-gray-700"><span class="font-semibold">Gear Numbers:</span> <?php echo htmlspecialchars($car_details['gear_numbers'] ?? ''); ?></div>
             <div class="text-gray-700"><span class="font-semibold">Wheel Size:</span> <?php echo htmlspecialchars($car_details['wheel_size'] ?? ''); ?></div>
+            <?php if (!empty($car_details['car_condition'])): ?>
+              <div class="text-gray-700"><span class="font-semibold">Condition:</span> <?php echo htmlspecialchars($car_details['car_condition']); ?></div>
+            <?php endif; ?>
           </div>
         </div>
       </div>

@@ -84,15 +84,15 @@ if (isset($_GET['make']) && $_GET['make'] !== '') {
         <input type="range" id="maxPrice" min="1" max="100000000" value="100000000" class="w-full">
 
         <!-- Popup trigger -->
-        <button id="openPricePopup" class="mt-2 px-3 py-1 bg-blue-600 text-white rounded">
+        <button type="button" id="openPricePopup" class="mt-2 px-3 py-1 bg-blue-600 text-white rounded">
           Enter Specific Price
         </button>
       </div>
 
-      <input type="hidden" name="minYear" value="<?php echo isset($_GET['minYear']) ? intval($_GET['minYear']) : 1957; ?>">
-      <input type="hidden" name="maxYear" value="<?php echo isset($_GET['maxYear']) ? intval($_GET['maxYear']) : 2025; ?>">
-      <input type="hidden" name="minPrice" value="<?php echo isset($_GET['minPrice']) ? intval($_GET['minPrice']) : 1; ?>">
-      <input type="hidden" name="maxPrice" value="<?php echo isset($_GET['maxPrice']) ? intval($_GET['maxPrice']) : 100000000; ?>">
+  <input id="hiddenMinYear" type="hidden" name="minYear" value="<?php echo isset($_GET['minYear']) ? intval($_GET['minYear']) : 1957; ?>">
+  <input id="hiddenMaxYear" type="hidden" name="maxYear" value="<?php echo isset($_GET['maxYear']) ? intval($_GET['maxYear']) : 2025; ?>">
+  <input id="hiddenMinPrice" type="hidden" name="minPrice" value="<?php echo isset($_GET['minPrice']) ? intval($_GET['minPrice']) : 1; ?>">
+  <input id="hiddenMaxPrice" type="hidden" name="maxPrice" value="<?php echo isset($_GET['maxPrice']) ? intval($_GET['maxPrice']) : 100000000; ?>">
       <button class="w-full bg-red-600 text-white py-2 rounded-lg text-lg font-semibold">Search</button>
       </form>
       <script>
@@ -131,8 +131,8 @@ if (isset($_GET['make']) && $_GET['make'] !== '') {
   </div>
 
   <script>
-    const minYear = document.getElementById("minYear");
-    const maxYear = document.getElementById("maxYear");
+  const minYear = document.getElementById("minYear");
+  const maxYear = document.getElementById("maxYear");
     const yearDisplay = document.getElementById("yearDisplay");
 
     const minPrice = document.getElementById("minPrice");
@@ -146,16 +146,30 @@ if (isset($_GET['make']) && $_GET['make'] !== '') {
     const popupMinPrice = document.getElementById("popupMinPrice");
     const popupMaxPrice = document.getElementById("popupMaxPrice");
 
+    // Hidden inputs to submit current slider/popup values
+    const hiddenMinYear = document.getElementById("hiddenMinYear");
+    const hiddenMaxYear = document.getElementById("hiddenMaxYear");
+    const hiddenMinPrice = document.getElementById("hiddenMinPrice");
+    const hiddenMaxPrice = document.getElementById("hiddenMaxPrice");
+
+    // If hidden inputs carry values (from previous GET), initialize sliders accordingly
+    if (hiddenMinYear.value) minYear.value = hiddenMinYear.value;
+    if (hiddenMaxYear.value) maxYear.value = hiddenMaxYear.value;
+    if (hiddenMinPrice.value) minPrice.value = hiddenMinPrice.value;
+    if (hiddenMaxPrice.value) maxPrice.value = hiddenMaxPrice.value;
+
     // Year slider update
     function updateYear() {
       let min = parseInt(minYear.value);
       let max = parseInt(maxYear.value);
       if (min > max) min = max;
       yearDisplay.textContent = `${min} - ${max}`;
+      hiddenMinYear.value = minYear.value;
+      hiddenMaxYear.value = maxYear.value;
     }
     minYear.addEventListener("input", updateYear);
     maxYear.addEventListener("input", updateYear);
-    updateYear();
+  updateYear();
 
     // Price slider update
     function updatePrice() {
@@ -163,13 +177,16 @@ if (isset($_GET['make']) && $_GET['make'] !== '') {
       let max = parseInt(maxPrice.value);
       if (min > max) min = max;
       priceDisplay.textContent = `RM ${min.toLocaleString()} - RM ${max.toLocaleString()}`;
+      hiddenMinPrice.value = minPrice.value;
+      hiddenMaxPrice.value = maxPrice.value;
     }
     minPrice.addEventListener("input", updatePrice);
     maxPrice.addEventListener("input", updatePrice);
-    updatePrice();
+  updatePrice();
 
     // Popup events
-    openPopup.addEventListener("click", () => {
+    openPopup.addEventListener("click", (e) => {
+      e.preventDefault();
       popup.classList.remove("hidden");
       popupMinPrice.value = minPrice.value;
       popupMaxPrice.value = maxPrice.value;

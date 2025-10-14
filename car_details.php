@@ -27,8 +27,8 @@ $resImg = $imgQ->get_result();
 while ($row = $resImg->fetch_assoc()) $imgs[] = $row['image_path'];
 $imgQ->close();
 
-// fetch car_details
-$details = $mysqli->prepare("SELECT color, horsepower, engine_code, gear_numbers, wheel_size, seller_note FROM car_details WHERE car_id=?");
+// fetch car_details (includes optional car_condition)
+$details = $mysqli->prepare("SELECT color, horsepower, engine_code, gear_numbers, wheel_size, seller_note, car_condition FROM car_details WHERE car_id=?");
 $details->bind_param("i", $car_id);
 $details->execute();
 $car_details = $details->get_result()->fetch_assoc();
@@ -41,7 +41,7 @@ if (!$car_details) {
     $ins->execute();
     $ins->close();
     // Re-fetch after insert
-    $details = $mysqli->prepare("SELECT color, horsepower, engine_code, gear_numbers, wheel_size, seller_note FROM car_details WHERE car_id=?");
+  $details = $mysqli->prepare("SELECT color, horsepower, engine_code, gear_numbers, wheel_size, seller_note, car_condition FROM car_details WHERE car_id=?");
     $details->bind_param("i", $car_id);
     $details->execute();
     $car_details = $details->get_result()->fetch_assoc();
@@ -55,8 +55,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update_details'])) {
     $engine_code = $mysqli->real_escape_string($_POST['engine_code']);
     $gear_numbers = intval($_POST['gear_numbers']);
     $wheel_size = $mysqli->real_escape_string($_POST['wheel_size']);
-    $stmt = $mysqli->prepare("UPDATE car_details SET color=?, horsepower=?, engine_code=?, gear_numbers=?, wheel_size=? WHERE car_id=?");
-    $stmt->bind_param("sisisi", $color, $horsepower, $engine_code, $gear_numbers, $wheel_size, $car_id);
+    // Validate condition (nullable)
+    $allowed_conditions = ['New','Reconditioned','Used','Certified'];
+    $car_condition = isset($_POST['car_condition']) && in_array($_POST['car_condition'], $allowed_conditions)
+      ? $_POST['car_condition']
+      : null;
+    if ($car_condition !== null) {
+      $car_condition = $mysqli->real_escape_string($car_condition);
+    }
+  $stmt = $mysqli->prepare("UPDATE car_details SET color=?, horsepower=?, engine_code=?, gear_numbers=?, wheel_size=?, car_condition=? WHERE car_id=?");
+  $stmt->bind_param("sisissi", $color, $horsepower, $engine_code, $gear_numbers, $wheel_size, $car_condition, $car_id);
     $stmt->execute();
     $stmt->close();
     header("Location: car_details.php?car_id=$car_id");
@@ -130,6 +138,9 @@ function changeMain(src){
             <div><span class="font-semibold">Fuel:</span> <?php echo htmlspecialchars($car['fuel']); ?></div>
             <div><span class="font-semibold">Drive System:</span> <?php echo htmlspecialchars($car['drive_system']); ?></div>
             <div><span class="font-semibold">Doors:</span> <?php echo htmlspecialchars($car['doors']); ?>D</div>
+                <?php if (!empty($car_details['car_condition'])): ?>
+                  <div><span class="font-semibold">Condition:</span> <?php echo htmlspecialchars($car_details['car_condition']); ?></div>
+                <?php endif; ?>
           </div>
         </div>
         <div class="bg-gray-50 rounded-lg shadow p-4 mb-4">
@@ -140,6 +151,14 @@ function changeMain(src){
             <input type="text" name="engine_code" value="<?php echo htmlspecialchars($car_details['engine_code'] ?? ''); ?>" placeholder="Engine Code" class="border p-2 rounded">
             <input type="number" name="gear_numbers" value="<?php echo htmlspecialchars($car_details['gear_numbers'] ?? ''); ?>" placeholder="Gear Numbers" class="border p-2 rounded">
             <input type="text" name="wheel_size" value="<?php echo htmlspecialchars($car_details['wheel_size'] ?? ''); ?>" placeholder="Wheel Size" class="border p-2 rounded">
+            <select name="car_condition" class="border p-2 rounded">
+              <?php $cond = $car_details['car_condition'] ?? ''; ?>
+              <option value="" <?php echo $cond==='' ? 'selected' : ''; ?>>Condition (optional)</option>
+              <option value="New" <?php echo $cond==='New' ? 'selected' : ''; ?>>New</option>
+              <option value="Reconditioned" <?php echo $cond==='Reconditioned' ? 'selected' : ''; ?>>Reconditioned</option>
+              <option value="Used" <?php echo $cond==='Used' ? 'selected' : ''; ?>>Used</option>
+              <option value="Certified" <?php echo $cond==='Certified' ? 'selected' : ''; ?>>Certified</option>
+            </select>
             <div class="col-span-2 flex justify-end">
               <button type="submit" name="update_details" class="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700">Save Details</button>
             </div>
