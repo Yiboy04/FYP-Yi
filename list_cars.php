@@ -22,6 +22,11 @@ $engine_capacity = isset($_GET['engine_capacity']) ? $mysqli->real_escape_string
 $variant = isset($_GET['variant']) ? $mysqli->real_escape_string($_GET['variant']) : '';
 $transmissionFilter = isset($_GET['transmission']) ? $mysqli->real_escape_string($_GET['transmission']) : '';
 
+// Sort option (whitelist to avoid SQL injection)
+$sort = isset($_GET['sort']) ? $_GET['sort'] : 'random';
+$allowedSorts = ['price_desc','price_asc','year_desc','year_asc','mileage_desc','mileage_asc','random'];
+if (!in_array($sort, $allowedSorts, true)) { $sort = 'random'; }
+
 // Build option lists (scoped by current make/model when provided)
 $baseScope = [];
 if ($make) $baseScope[] = "make='$make'";
@@ -80,7 +85,19 @@ if ($color) $where[] = "cd.color='$color'";
 if ($car_condition) $where[] = "cd.car_condition='$car_condition'";
 $whereSQL = count($where) ? 'WHERE ' . implode(' AND ', $where) : '';
 // LEFT JOIN car_details as cd to filter by color/condition while still showing cars with no details when those filters are empty
-$sql = "SELECT cars.* FROM cars LEFT JOIN car_details cd ON cars.car_id = cd.car_id $whereSQL ORDER BY price DESC";
+// Build ORDER BY from sort selection
+switch ($sort) {
+  case 'price_asc':    $orderBy = "cars.price ASC, cars.car_id ASC"; break;
+  case 'price_desc':   $orderBy = "cars.price DESC, cars.car_id ASC"; break;
+  case 'year_asc':     $orderBy = "cars.year ASC, cars.car_id ASC"; break;
+  case 'year_desc':    $orderBy = "cars.year DESC, cars.car_id ASC"; break;
+  case 'mileage_asc':  $orderBy = "cars.mileage ASC, cars.car_id ASC"; break;
+  case 'mileage_desc': $orderBy = "cars.mileage DESC, cars.car_id ASC"; break;
+  case 'random':
+  default:             $orderBy = "RAND()"; break;
+}
+
+$sql = "SELECT cars.*, cd.color AS cd_color, cd.car_condition AS cd_condition FROM cars LEFT JOIN car_details cd ON cars.car_id = cd.car_id $whereSQL ORDER BY $orderBy";
 $res = $mysqli->query($sql);
 // Preload thumbnails for cars in result to avoid N+1 queries
 $rows = [];
@@ -114,15 +131,26 @@ if (count($carIds) > 0) {
 <body class="bg-gray-100 min-h-screen">
 <header class="bg-red-600 text-white p-4">
   <div class="container mx-auto flex justify-between items-center">
-    <h1 class="text-2xl font-bold">Car Listings</h1>
-    <a href="main.php" class="underline">Back</a>
+    <h1 class="text-2xl font-bold">MyCar (FYP)</h1>
+    <nav>
+      <ul class="flex gap-6">
+        <li><a href="main.php" class="hover:underline">Home</a></li>
+        <li><a href="car_view.php" class="hover:underline">Listings</a></li>
+        <li><a href="#" class="hover:underline">About</a></li>
+        <?php if (!empty($_SESSION['role']) && $_SESSION['role']==='buyer'): ?>
+          <li><a href="buyer_profile.php" class="hover:underline">Profile</a></li>
+        <?php endif; ?>
+        <li><a href="logout.php" class="hover:underline">Logout</a></li>
+      </ul>
+    </nav>
   </div>
-</header>
+  </header>
 <main class="container mx-auto mt-8 flex gap-8">
   <!-- Filter Sidebar -->
   <aside class="w-80 bg-white rounded-xl shadow p-6 mb-8">
     <h2 class="text-xl font-bold mb-4">Filter</h2>
     <form method="get" action="list_cars.php">
+      <input type="hidden" name="sort" value="<?php echo htmlspecialchars($sort); ?>" />
       <div class="mb-4">
         <label class="block mb-1">Make</label>
         <select name="make" class="w-full p-2 border rounded" onchange="this.form.submit()">
@@ -212,19 +240,103 @@ if (count($carIds) > 0) {
   </aside>
   <!-- Car List -->
   <section class="flex-1">
-    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+    <!-- Top-right sort control -->
+    <div class="flex justify-end items-center mb-4">
+      <form method="get" action="list_cars.php" class="flex items-center gap-2">
+        <!-- Preserve current filters -->
+        <input type="hidden" name="make" value="<?php echo htmlspecialchars($make); ?>" />
+        <input type="hidden" name="model" value="<?php echo htmlspecialchars($model); ?>" />
+        <input type="hidden" name="minYear" value="<?php echo htmlspecialchars($minYear); ?>" />
+        <input type="hidden" name="maxYear" value="<?php echo htmlspecialchars($maxYear); ?>" />
+        <input type="hidden" name="minPrice" value="<?php echo htmlspecialchars($minPrice); ?>" />
+        <input type="hidden" name="maxPrice" value="<?php echo htmlspecialchars($maxPrice); ?>" />
+        <input type="hidden" name="variant" value="<?php echo htmlspecialchars($variant); ?>" />
+        <input type="hidden" name="transmission" value="<?php echo htmlspecialchars($transmissionFilter); ?>" />
+        <input type="hidden" name="doors" value="<?php echo htmlspecialchars((string)$doors); ?>" />
+        <input type="hidden" name="engine_capacity" value="<?php echo htmlspecialchars($engine_capacity); ?>" />
+        <input type="hidden" name="engine_capacity_min" value="<?php echo htmlspecialchars((string)$engine_capacity_min); ?>" />
+        <input type="hidden" name="engine_capacity_max" value="<?php echo htmlspecialchars((string)$engine_capacity_max); ?>" />
+        <input type="hidden" name="color" value="<?php echo htmlspecialchars($color); ?>" />
+        <input type="hidden" name="car_condition" value="<?php echo htmlspecialchars($car_condition); ?>" />
+        <label class="mr-2 text-gray-700">Sort by</label>
+        <select name="sort" class="p-2 border rounded" onchange="this.form.submit()">
+          <option value="random" <?php if($sort==='random') echo 'selected'; ?>>Default</option>
+          <option value="price_desc" <?php if($sort==='price_desc') echo 'selected'; ?>>Price: High to Low</option>
+          <option value="price_asc" <?php if($sort==='price_asc') echo 'selected'; ?>>Price: Low to High</option>
+          <option value="year_desc" <?php if($sort==='year_desc') echo 'selected'; ?>>Year: New to Old</option>
+          <option value="year_asc" <?php if($sort==='year_asc') echo 'selected'; ?>>Year: Old to New</option>
+          <option value="mileage_desc" <?php if($sort==='mileage_desc') echo 'selected'; ?>>Mileage: High to Low</option>
+          <option value="mileage_asc" <?php if($sort==='mileage_asc') echo 'selected'; ?>>Mileage: Low to High</option>
+        </select>
+      </form>
+    </div>
+  <div class="grid grid-cols-1 gap-4">
       <?php if (!empty($rows)): ?>
       <?php foreach($rows as $car): ?>
-        <?php $thumb = $thumbnails[$car['car_id']] ?? 'https://via.placeholder.com/300x200?text=No+Image'; ?>
-        <div class="bg-white rounded-xl shadow hover:shadow-lg p-4 flex flex-col">
-          <img src="<?php echo htmlspecialchars($thumb); ?>" class="w-full h-40 object-cover rounded mb-2">
-          <h3 class="text-lg font-bold mb-1"><?php echo htmlspecialchars($car['make'].' '.$car['model']); ?></h3>
-          <div class="text-red-600 font-bold mb-2">RM <?php echo number_format($car['price'],2); ?></div>
-          <div class="text-sm text-gray-600 mb-2">
-            Year: <?php echo htmlspecialchars($car['year']); ?> | Mileage: <?php echo htmlspecialchars($car['mileage']); ?> km
+        <?php
+          $thumb = $thumbnails[$car['car_id']] ?? 'https://via.placeholder.com/480x320?text=No+Image';
+          $isNew = is_numeric($car['year']) ? ((int)$car['year'] >= ((int)date('Y') - 1)) : false;
+          $isRecommended = isset($car['cd_condition']) && in_array($car['cd_condition'], ['Certified','Reconditioned']);
+          $condText = isset($car['cd_condition']) ? trim((string)$car['cd_condition']) : '';
+          $colorDisp = $car['cd_color'] ?? '';
+          $colorDisp = $colorDisp !== '' ? $colorDisp : '—';
+          $mileageDisp = is_numeric($car['mileage']) ? number_format((int)$car['mileage']) . ' km' : '—';
+          // engine_capacity can be number in liters; show cc if numeric
+          $engineCC = '—';
+          if (isset($car['engine_capacity']) && $car['engine_capacity'] !== '' && is_numeric($car['engine_capacity'])) {
+            $engineCC = number_format((float)$car['engine_capacity'] * 1000) . ' cc';
+          } elseif (isset($car['engine_capacity']) && $car['engine_capacity'] !== '') {
+            $engineCC = htmlspecialchars($car['engine_capacity']);
+          }
+          $trans = $car['transmission'] ?? '';
+          $transShort = $trans === 'Manual' ? 'MT' : ($trans ?: '—');
+          $monthly = is_numeric($car['price']) ? ((float)$car['price'] / 108.0) : null;
+        ?>
+        <div class="bg-white rounded-xl shadow hover:shadow-lg p-3 flex flex-col md:flex-row gap-3">
+          <div class="relative w-full md:w-56">
+            <?php if ($isRecommended): ?>
+              <div class="absolute -top-3 -left-3 bg-yellow-500 text-white text-xs font-bold px-3 py-1 rounded-md shadow">Recommended</div>
+            <?php endif; ?>
+            <img src="<?php echo htmlspecialchars($thumb); ?>" class="w-full h-40 md:h-36 object-cover rounded-lg">
+            <?php if (!empty($condText)): ?>
+              <div class="absolute bottom-2 left-2 bg-black bg-opacity-70 text-white text-xs font-semibold px-2 py-0.5 rounded"><?php echo htmlspecialchars($condText); ?></div>
+            <?php endif; ?>
+            <?php if ($isNew): ?>
+              <?php $newPos = !empty($condText) ? 'bottom-9 left-2' : 'bottom-2 left-2'; ?>
+              <div class="absolute <?php echo $newPos; ?> bg-red-600 text-white text-xs font-bold px-2 py-1 rounded">NEW</div>
+            <?php endif; ?>
+            <!-- Play icon overlay placeholder -->
+            <div class="hidden absolute inset-0 items-center justify-center">
+              <div class="w-12 h-12 bg-white bg-opacity-90 rounded-full flex items-center justify-center text-red-600">▶</div>
+            </div>
           </div>
-          <div class="flex-1"></div>
-          <a href="car_details_view.php?car_id=<?php echo $car['car_id']; ?><?php if(!empty($_SERVER['QUERY_STRING'])) echo '&'.htmlspecialchars($_SERVER['QUERY_STRING']); ?>" class="mt-2 w-full bg-blue-600 text-white py-2 rounded-lg text-center font-semibold">View Details</a>
+          <div class="flex-1 flex flex-col">
+            <div class="flex items-start justify-between gap-2">
+              <div class="min-w-0">
+                <h3 class="text-base md:text-lg font-bold leading-tight truncate"><?php echo htmlspecialchars(strtoupper($car['make'].' '.$car['model'])); ?></h3>
+                <?php if (!empty($car['variant'])): ?>
+                  <div class="text-xs md:text-sm text-gray-600 truncate"><?php echo htmlspecialchars($car['variant']); ?></div>
+                <?php endif; ?>
+              </div>
+              <div class="text-right">
+                <div class="text-red-600 font-extrabold text-lg md:text-xl whitespace-nowrap">RM <?php echo number_format((float)$car['price'], 0); ?></div>
+                <?php if ($monthly !== null): ?>
+                  <div class="text-gray-600 opacity-60 text-xs md:text-sm whitespace-nowrap">RM <?php echo number_format($monthly, 0); ?>/month</div>
+                <?php endif; ?>
+              </div>
+            </div>
+            <div class="mt-2 grid grid-cols-2 gap-x-6 gap-y-1 text-xs md:text-sm">
+              <div class="flex items-baseline gap-2"><span class="text-gray-500 w-20">Year</span><span class="text-gray-800 font-medium"><?php echo htmlspecialchars((string)$car['year']); ?></span></div>
+              <div class="flex items-baseline gap-2"><span class="text-gray-500 w-20">Color</span><span class="text-gray-800 font-medium"><?php echo htmlspecialchars($colorDisp); ?></span></div>
+              <div class="flex items-baseline gap-2"><span class="text-gray-500 w-20">Mileage</span><span class="text-gray-800 font-medium"><?php echo htmlspecialchars($mileageDisp); ?></span></div>
+              <div class="flex items-baseline gap-2"><span class="text-gray-500 w-20">Engine</span><span class="text-gray-800 font-medium"><?php echo $engineCC; ?></span></div>
+              <div class="flex items-baseline gap-2"><span class="text-gray-500 w-20">Steering</span><span class="text-gray-800 font-medium">Right</span></div>
+              <div class="flex items-baseline gap-2"><span class="text-gray-500 w-20">Trans</span><span class="text-gray-800 font-medium"><?php echo htmlspecialchars($transShort); ?></span></div>
+            </div>
+            <div class="mt-3 flex justify-end">
+              <a href="car_details_view.php?car_id=<?php echo $car['car_id']; ?><?php if(!empty($_SERVER['QUERY_STRING'])) echo '&'.htmlspecialchars($_SERVER['QUERY_STRING']); ?>" class="inline-flex items-center justify-center bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg font-semibold">View Details</a>
+            </div>
+          </div>
         </div>
       <?php endforeach; ?>
       <?php else: ?>
