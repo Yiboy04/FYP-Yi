@@ -57,8 +57,8 @@ $imgQ->execute();
 $resImg = $imgQ->get_result();
 while ($row = $resImg->fetch_assoc()) $imgs[] = $row['image_path'];
 $imgQ->close();
-// fetch car_details (include optional car_condition)
-$details = $mysqli->prepare("SELECT color, horsepower, engine_code, gear_numbers, wheel_size, seller_note, car_condition FROM car_details WHERE car_id=?");
+// fetch car_details (include new wheel sizes, torque, car_type, and condition)
+$details = $mysqli->prepare("SELECT color, horsepower, engine_code, gear_numbers, front_wheel_size, rear_wheel_size, torque, car_type, seller_note, car_condition FROM car_details WHERE car_id=?");
 $details->bind_param("i", $car_id);
 $details->execute();
 $car_details = $details->get_result()->fetch_assoc();
@@ -81,7 +81,14 @@ function changeMain(src){
   <div class="container mx-auto flex justify-between items-center">
     <h1 class="text-2xl font-bold">MyCar (FYP)</h1>
     <nav>
-      <ul class="flex gap-6">
+      <ul class="flex gap-6 items-center">
+        <li>
+          <a href="saved_search.php" class="inline-flex items-center" title="Saved Searches">
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" class="w-6 h-6 text-white hover:text-gray-200">
+              <path d="M6 2a2 2 0 0 0-2 2v18l8-4 8 4V4a2 2 0 0 0-2-2H6z"/>
+            </svg>
+          </a>
+        </li>
         <li><a href="main.php" class="hover:underline">Home</a></li>
         <li><a href="car_view.php" class="hover:underline">Listings</a></li>
         <li><a href="#" class="hover:underline">About</a></li>
@@ -118,6 +125,35 @@ function changeMain(src){
         <div class="mt-6">
           <label class="block font-semibold mb-2 text-blue-600" for="seller_note">Seller's Note</label>
           <div class="border p-3 rounded w-full h-32 bg-gray-50 text-gray-700"><?php echo nl2br(htmlspecialchars($car_details['seller_note'] ?? '')); ?></div>
+          <?php
+          // Saved/Unsave button (buyers only) — ensure table exists and compute state
+          if (!empty($_SESSION['user_id']) && !empty($_SESSION['role']) && $_SESSION['role'] === 'buyer') {
+            $buyerId = intval($_SESSION['user_id']);
+            // Ensure table exists (idempotent)
+            $mysqli->query("CREATE TABLE IF NOT EXISTS saved_cars (
+              buyer_id INT NOT NULL,
+              car_id INT NOT NULL,
+              saved_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+              PRIMARY KEY (buyer_id, car_id),
+              CONSTRAINT fk_saved_buyer FOREIGN KEY (buyer_id) REFERENCES buyers(id) ON DELETE CASCADE,
+              CONSTRAINT fk_saved_car FOREIGN KEY (car_id) REFERENCES cars(car_id) ON DELETE CASCADE
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+            $isSaved = false;
+            if ($st = $mysqli->prepare('SELECT 1 FROM saved_cars WHERE buyer_id=? AND car_id=? LIMIT 1')) {
+              $st->bind_param('ii', $buyerId, $car_id);
+              $st->execute();
+              $st->store_result();
+              $isSaved = $st->num_rows > 0;
+              $st->close();
+            }
+            $toggleUrl = $isSaved ? ('saved_search.php?unsave='.(int)$car_id) : ('saved_search.php?save='.(int)$car_id);
+            $btnText = $isSaved ? 'Unsave' : 'Save';
+            $btnClass = $isSaved ? 'bg-gray-600 hover:bg-gray-700' : 'bg-green-600 hover:bg-green-700';
+            echo '<div class="mt-3">';
+            echo '<a href="'.htmlspecialchars($toggleUrl).'" class="inline-flex items-center '.$btnClass.' text-white px-4 py-2 rounded-lg font-semibold">'.$btnText.'</a>';
+            echo '</div>';
+          }
+          ?>
         </div>
       </div>
       <!-- Right: details -->
@@ -195,7 +231,12 @@ function changeMain(src){
             <div class="text-gray-700"><span class="font-semibold">Horsepower:</span> <?php echo htmlspecialchars($car_details['horsepower'] ?? ''); ?></div>
             <div class="text-gray-700"><span class="font-semibold">Engine Code:</span> <?php echo htmlspecialchars($car_details['engine_code'] ?? ''); ?></div>
             <div class="text-gray-700"><span class="font-semibold">Gear Numbers:</span> <?php echo htmlspecialchars($car_details['gear_numbers'] ?? ''); ?></div>
-            <div class="text-gray-700"><span class="font-semibold">Wheel Size:</span> <?php echo htmlspecialchars($car_details['wheel_size'] ?? ''); ?></div>
+            <div class="text-gray-700"><span class="font-semibold">Front Wheel Size:</span> <?php echo htmlspecialchars($car_details['front_wheel_size'] ?? ''); ?></div>
+            <div class="text-gray-700"><span class="font-semibold">Rear Wheel Size:</span> <?php echo htmlspecialchars($car_details['rear_wheel_size'] ?? ''); ?></div>
+            <div class="text-gray-700"><span class="font-semibold">Torque:</span> <?php echo htmlspecialchars($car_details['torque'] ?? ''); ?></div>
+            <?php if (!empty($car_details['car_type'])): ?>
+              <div class="text-gray-700"><span class="font-semibold">Car Type:</span> <?php echo htmlspecialchars($car_details['car_type']); ?></div>
+            <?php endif; ?>
             <?php if (!empty($car_details['car_condition'])): ?>
               <div class="text-gray-700"><span class="font-semibold">Condition:</span> <?php echo htmlspecialchars($car_details['car_condition']); ?></div>
             <?php endif; ?>

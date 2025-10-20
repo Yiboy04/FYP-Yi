@@ -31,6 +31,8 @@ if (!in_array($sort, $allowedSorts, true)) { $sort = 'random'; }
 $baseScope = [];
 if ($make) $baseScope[] = "make='$make'";
 if ($model) $baseScope[] = "model='$model'";
+// Only include open listings in option lists
+$baseScope[] = "(listing_status IS NULL OR listing_status='open')";
 
 // Variants from cars
 $variantOptions = [];
@@ -58,6 +60,7 @@ $colorOptions = [];
   $where = [];
   if ($make) $where[] = "c.make='$make'";
   if ($model) $where[] = "c.model='$model'";
+  $where[] = "(c.listing_status IS NULL OR c.listing_status='open')";
   $where[] = "cd.color IS NOT NULL AND cd.color<>''";
   $sqlOpt = "SELECT DISTINCT cd.color AS color FROM car_details cd JOIN cars c ON cd.car_id=c.car_id" . (count($where) ? (" WHERE " . implode(' AND ', $where)) : "") . " ORDER BY cd.color ASC";
   $colorRes = $mysqli->query($sqlOpt);
@@ -69,6 +72,8 @@ if ($make) $where[] = "make='$make'";
 if ($model) $where[] = "model='$model'";
 $where[] = "year>=$minYear AND year<=$maxYear";
 $where[] = "price>=$minPrice AND price<=$maxPrice";
+// Only show open listings in results
+$where[] = "(cars.listing_status IS NULL OR cars.listing_status='open')";
 // apply new filters
 if ($variant) $where[] = "variant='$variant'";
 if ($transmissionFilter) $where[] = "transmission='$transmissionFilter'";
@@ -133,7 +138,14 @@ if (count($carIds) > 0) {
   <div class="container mx-auto flex justify-between items-center">
     <h1 class="text-2xl font-bold">MyCar (FYP)</h1>
     <nav>
-      <ul class="flex gap-6">
+      <ul class="flex gap-6 items-center">
+        <li>
+          <a href="saved_search.php" class="inline-flex items-center" title="Saved Searches">
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" class="w-6 h-6 text-white hover:text-gray-200">
+              <path d="M6 2a2 2 0 0 0-2 2v18l8-4 8 4V4a2 2 0 0 0-2-2H6z"/>
+            </svg>
+          </a>
+        </li>
         <li><a href="main.php" class="hover:underline">Home</a></li>
         <li><a href="car_view.php" class="hover:underline">Listings</a></li>
         <li><a href="#" class="hover:underline">About</a></li>
@@ -155,7 +167,7 @@ if (count($carIds) > 0) {
         <label class="block mb-1">Make</label>
         <select name="make" class="w-full p-2 border rounded" onchange="this.form.submit()">
           <option value="">All Makes</option>
-          <?php $makesRes = $mysqli->query("SELECT DISTINCT make FROM cars ORDER BY make ASC");
+          <?php $makesRes = $mysqli->query("SELECT DISTINCT make FROM cars WHERE (listing_status IS NULL OR listing_status='open') ORDER BY make ASC");
           while($row = $makesRes->fetch_assoc()): ?>
             <option value="<?php echo htmlspecialchars($row['make']); ?>" <?php if($make==$row['make']) echo 'selected'; ?>><?php echo htmlspecialchars($row['make']); ?></option>
           <?php endwhile; ?>
@@ -165,7 +177,7 @@ if (count($carIds) > 0) {
         <label class="block mb-1">Model</label>
         <select name="model" class="w-full p-2 border rounded" onchange="this.form.submit()">
           <option value="">All Models</option>
-          <?php if($make): $modelsRes = $mysqli->query("SELECT DISTINCT model FROM cars WHERE make='$make' ORDER BY model ASC");
+          <?php if($make): $modelsRes = $mysqli->query("SELECT DISTINCT model FROM cars WHERE make='$make' AND (listing_status IS NULL OR listing_status='open') ORDER BY model ASC");
           while($row = $modelsRes->fetch_assoc()): ?>
             <option value="<?php echo htmlspecialchars($row['model']); ?>" <?php if($model==$row['model']) echo 'selected'; ?>><?php echo htmlspecialchars($row['model']); ?></option>
           <?php endwhile; endif; ?>
@@ -278,6 +290,7 @@ if (count($carIds) > 0) {
           $isNew = is_numeric($car['year']) ? ((int)$car['year'] >= ((int)date('Y') - 1)) : false;
           $isRecommended = isset($car['cd_condition']) && in_array($car['cd_condition'], ['Certified','Reconditioned']);
           $condText = isset($car['cd_condition']) ? trim((string)$car['cd_condition']) : '';
+          $showCondOverlay = ($condText !== '' && strcasecmp($condText, 'New') !== 0);
           $colorDisp = $car['cd_color'] ?? '';
           $colorDisp = $colorDisp !== '' ? $colorDisp : '—';
           $mileageDisp = is_numeric($car['mileage']) ? number_format((int)$car['mileage']) . ' km' : '—';
@@ -298,11 +311,11 @@ if (count($carIds) > 0) {
               <div class="absolute -top-3 -left-3 bg-yellow-500 text-white text-xs font-bold px-3 py-1 rounded-md shadow">Recommended</div>
             <?php endif; ?>
             <img src="<?php echo htmlspecialchars($thumb); ?>" class="w-full h-40 md:h-36 object-cover rounded-lg">
-            <?php if (!empty($condText)): ?>
+            <?php if ($showCondOverlay): ?>
               <div class="absolute bottom-2 left-2 bg-black bg-opacity-70 text-white text-xs font-semibold px-2 py-0.5 rounded"><?php echo htmlspecialchars($condText); ?></div>
             <?php endif; ?>
             <?php if ($isNew): ?>
-              <?php $newPos = !empty($condText) ? 'bottom-9 left-2' : 'bottom-2 left-2'; ?>
+              <?php $newPos = $showCondOverlay ? 'bottom-9 left-2' : 'bottom-2 left-2'; ?>
               <div class="absolute <?php echo $newPos; ?> bg-red-600 text-white text-xs font-bold px-2 py-1 rounded">NEW</div>
             <?php endif; ?>
             <!-- Play icon overlay placeholder -->

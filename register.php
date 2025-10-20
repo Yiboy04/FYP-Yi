@@ -13,18 +13,24 @@ if ($conn->connect_error) {
     die("Connection failed: " . $conn->connect_error);
 }
 
+// Helper to normalize phone numbers to digits-only
+function normalize_phone($p) {
+  return preg_replace('/\D+/', '', trim((string)$p));
+}
+
 if ($_SERVER["REQUEST_METHOD"] == "POST") {
     $name     = $_POST['name'];
     $email    = $_POST['email'];
     $password = $_POST['password'];
     $confirm  = $_POST['confirm_password'];
-    $phone    = $_POST['phone'];
+  $phone    = $_POST['phone'];
+  $phoneNorm = normalize_phone($phone);
     $role     = $_POST['role']; // buyer or seller
 
     // --- Validate email format ---
     if (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
         $error = "This is not a valid email address.";
-    } else {
+  } else {
         // Check duplicate email in BOTH tables
         if ($role == 'buyer') {
             $check = $conn->prepare("SELECT id FROM buyers WHERE email = ?");
@@ -40,6 +46,41 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
         $check->close();
     }
 
+  // --- Validate phone (not empty) and check duplicates across buyers & sellers ---
+  if (empty($error)) {
+    if ($phoneNorm === '') {
+      $error = 'Phone cannot be empty.';
+    } else {
+      // Check in buyers
+      if ($stmtChk = $conn->prepare("SELECT 1 FROM buyers WHERE REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(phone,' ',''),'-',''),'+',''),'(',''),')','') = ? LIMIT 1")) {
+        $stmtChk->bind_param('s', $phoneNorm);
+        $stmtChk->execute();
+        $stmtChk->store_result();
+        $existsInBuyers = $stmtChk->num_rows > 0;
+        $stmtChk->close();
+      } else {
+        $error = 'Failed to validate phone (buyers).';
+      }
+
+      // Check in sellers
+      if (empty($error)) {
+        if ($stmtChk2 = $conn->prepare("SELECT 1 FROM sellers WHERE REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(phone,' ',''),'-',''),'+',''),'(',''),')','') = ? LIMIT 1")) {
+          $stmtChk2->bind_param('s', $phoneNorm);
+          $stmtChk2->execute();
+          $stmtChk2->store_result();
+          $existsInSellers = $stmtChk2->num_rows > 0;
+          $stmtChk2->close();
+        } else {
+          $error = 'Failed to validate phone (sellers).';
+        }
+      }
+
+      if (empty($error) && (($existsInBuyers ?? false) || ($existsInSellers ?? false))) {
+        $error = 'This phone number has already been taken.';
+      }
+    }
+  }
+
     // --- Check password confirmation ---
     if (empty($error) && $password !== $confirm) {
         $error = "Passwords do not match!";
@@ -49,13 +90,13 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
     if (empty($error)) {
         $hashedPassword = password_hash($password, PASSWORD_DEFAULT);
 
-        if ($role == 'buyer') {
-            $stmt = $conn->prepare("INSERT INTO buyers (name, email, password, phone) VALUES (?, ?, ?, ?)");
-            $stmt->bind_param("ssss", $name, $email, $hashedPassword, $phone);
+    if ($role == 'buyer') {
+      $stmt = $conn->prepare("INSERT INTO buyers (name, email, password, phone) VALUES (?, ?, ?, ?)");
+      $stmt->bind_param("ssss", $name, $email, $hashedPassword, $phoneNorm);
         } else {
             // seller registration: car_id will be NULL initially
-            $stmt = $conn->prepare("INSERT INTO sellers (name, email, password, phone, car_id) VALUES (?, ?, ?, ?, NULL)");
-            $stmt->bind_param("ssss", $name, $email, $hashedPassword, $phone);
+      $stmt = $conn->prepare("INSERT INTO sellers (name, email, password, phone, car_id) VALUES (?, ?, ?, ?, NULL)");
+      $stmt->bind_param("ssss", $name, $email, $hashedPassword, $phoneNorm);
         }
 
         if ($stmt->execute()) {

@@ -1,25 +1,27 @@
 <?php
-// buyer_profile.php
+// seller_profile.php
 session_start();
-if (empty($_SESSION['user_id']) || empty($_SESSION['role']) || $_SESSION['role'] !== 'buyer') {
+if (empty($_SESSION['user_id']) || empty($_SESSION['role']) || $_SESSION['role'] !== 'seller') {
     header('Location: login.php');
     exit();
 }
 $mysqli = new mysqli('localhost', 'root', '', 'fyp');
 if ($mysqli->connect_errno) { die('DB error: ' . $mysqli->connect_error); }
-$buyerId = intval($_SESSION['user_id']);
+$sellerId = intval($_SESSION['user_id']);
 
 // Helper to normalize phone numbers to digits-only
 function normalize_phone($p) {
   return preg_replace('/\D+/', '', trim((string)$p));
 }
-$stmt = $mysqli->prepare('SELECT id, name, email, phone, password FROM buyers WHERE id = ?');
-$stmt->bind_param('i', $buyerId);
+
+// Load seller
+$stmt = $mysqli->prepare('SELECT id, name, email, phone, password FROM sellers WHERE id = ?');
+$stmt->bind_param('i', $sellerId);
 $stmt->execute();
 $res = $stmt->get_result();
-$buyer = $res->fetch_assoc();
+$seller = $res->fetch_assoc();
 $stmt->close();
-if (!$buyer) { die('Buyer not found.'); }
+if (!$seller) { die('Seller not found.'); }
 
 // Handle profile update (name/password)
 $successMsg = $errorMsg = '';
@@ -36,54 +38,54 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $errorMsg = 'Phone cannot be empty.';
   } else {
     // Update name first if changed
-    if ($newName !== $buyer['name']) {
-      $u = $mysqli->prepare('UPDATE buyers SET name=? WHERE id=?');
-      $u->bind_param('si', $newName, $buyerId);
+    if ($newName !== $seller['name']) {
+      $u = $mysqli->prepare('UPDATE sellers SET name=? WHERE id=?');
+      $u->bind_param('si', $newName, $sellerId);
       if (!$u->execute()) { $errorMsg = 'Failed to update name.'; }
       $u->close();
       if ($errorMsg === '') {
-        $buyer['name'] = $newName;
+        $seller['name'] = $newName;
         $_SESSION['name'] = $newName; // keep session in sync
       }
     }
 
-    // Phone uniqueness check across buyers and sellers (always validate)
+    // Phone uniqueness check across sellers and buyers (always validate)
     if ($errorMsg === '') {
-      $existsInBuyers = false; $existsInSellers = false;
-      // Check in buyers excluding self
-      if ($chk = $mysqli->prepare("SELECT 1 FROM buyers WHERE REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(phone,' ',''),'-',''),'+',''),'(',''),')','') = ? AND id <> ? LIMIT 1")) {
-        $chk->bind_param('si', $normalizedPhone, $buyerId);
+      $existsInSellers = false; $existsInBuyers = false;
+      // Check in sellers excluding self
+      if ($chk = $mysqli->prepare("SELECT 1 FROM sellers WHERE REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(phone,' ',''),'-',''),'+',''),'(',''),')','') = ? AND id <> ? LIMIT 1")) {
+        $chk->bind_param('si', $normalizedPhone, $sellerId);
         $chk->execute();
         $chk->store_result();
-        $existsInBuyers = $chk->num_rows > 0;
+        $existsInSellers = $chk->num_rows > 0;
         $chk->close();
       } else {
-        $errorMsg = 'Failed to validate phone (buyers).';
+        $errorMsg = 'Failed to validate phone (sellers).';
       }
 
-      // Check in sellers
+      // Check in buyers
       if ($errorMsg === '') {
-        if ($chk2 = $mysqli->prepare("SELECT 1 FROM sellers WHERE REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(phone,' ',''),'-',''),'+',''),'(',''),')','') = ? LIMIT 1")) {
+        if ($chk2 = $mysqli->prepare("SELECT 1 FROM buyers WHERE REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(phone,' ',''),'-',''),'+',''),'(',''),')','') = ? LIMIT 1")) {
           $chk2->bind_param('s', $normalizedPhone);
           $chk2->execute();
           $chk2->store_result();
-          $existsInSellers = $chk2->num_rows > 0;
+          $existsInBuyers = $chk2->num_rows > 0;
           $chk2->close();
         } else {
-          $errorMsg = 'Failed to validate phone (sellers).';
+          $errorMsg = 'Failed to validate phone (buyers).';
         }
       }
 
       if ($errorMsg === '') {
-        if ($existsInBuyers || $existsInSellers) {
+        if ($existsInSellers || $existsInBuyers) {
           $errorMsg = 'Phone number already in use.';
         } else {
           // Update phone only if different after normalization
-          if (normalize_phone($buyer['phone']) !== $normalizedPhone) {
-            $up = $mysqli->prepare('UPDATE buyers SET phone=? WHERE id=?');
-            $up->bind_param('si', $normalizedPhone, $buyerId);
+          if (normalize_phone($seller['phone']) !== $normalizedPhone) {
+            $up = $mysqli->prepare('UPDATE sellers SET phone=? WHERE id=?');
+            $up->bind_param('si', $normalizedPhone, $sellerId);
             if ($up->execute()) {
-              $buyer['phone'] = $normalizedPhone;
+              $seller['phone'] = $normalizedPhone;
               if ($successMsg === '') { $successMsg = 'Profile updated.'; }
             } else {
               $errorMsg = 'Failed to update phone.';
@@ -104,12 +106,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $errorMsg = 'New password and confirmation do not match.';
       } else {
         $hashed = password_hash($newPass, PASSWORD_DEFAULT);
-        $p = $mysqli->prepare('UPDATE buyers SET password=? WHERE id=?');
-        $p->bind_param('si', $hashed, $buyerId);
+        $p = $mysqli->prepare('UPDATE sellers SET password=? WHERE id=?');
+        $p->bind_param('si', $hashed, $sellerId);
         if ($p->execute()) {
           $successMsg = 'Password updated successfully.';
-          // refresh buyer row password hash
-          $buyer['password'] = $hashed;
+          $seller['password'] = $hashed;
         } else {
           $errorMsg = 'Failed to update password.';
         }
@@ -123,44 +124,40 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
   }
 }
 
-// Build Recently Viewed cars (up to 5)
-$recentCars = [];
-if (!empty($_SESSION['recently_viewed']) && is_array($_SESSION['recently_viewed'])) {
-  $ids = array_values(array_unique(array_map('intval', $_SESSION['recently_viewed'])));
-  $ids = array_slice($ids, 0, 5);
-  if (!empty($ids)) {
-    $idList = implode(',', $ids);
-    $orderField = implode(',', $ids); // Thumbnail selection logic updated below
-    $sql = "SELECT c.car_id, c.make, c.model, c.year, c.price,
-                   COALESCE(ci1.image_path, ci2.image_path) AS thumb
-            FROM cars c
-            LEFT JOIN (
-              SELECT ci.car_id, ci.image_path
-              FROM car_images ci
-              JOIN (
-                SELECT car_id, MIN(image_id) AS min_id
-                FROM car_images
-                WHERE car_id IN ($idList) AND (is_thumbnail = 1 OR is_thumbnail = '1')
-                GROUP BY car_id
-              ) t ON t.car_id = ci.car_id AND t.min_id = ci.image_id
-            ) ci1 ON ci1.car_id = c.car_id
-            LEFT JOIN (
-              SELECT ci.car_id, ci.image_path
-              FROM car_images ci
-              JOIN (
-                SELECT car_id, MIN(image_id) AS min_id
-                FROM car_images
-                WHERE car_id IN ($idList)
-                GROUP BY car_id
-              ) t ON t.car_id = ci.car_id AND t.min_id = ci.image_id
-            ) ci2 ON ci2.car_id = c.car_id
-            WHERE c.car_id IN ($idList)
-            ORDER BY FIELD(c.car_id, $orderField)";
-    if ($res = $mysqli->query($sql)) {
-      while ($row = $res->fetch_assoc()) { $recentCars[] = $row; }
-      $res->free();
-    }
+// Build Seller's recent listings (up to 5)
+$recentListings = [];
+$sql = "SELECT c.car_id, c.make, c.model, c.year, c.price,
+               COALESCE(ci1.image_path, ci2.image_path) AS thumb
+        FROM cars c
+        LEFT JOIN (
+          SELECT ci.car_id, ci.image_path
+          FROM car_images ci
+          JOIN (
+            SELECT car_id, MIN(image_id) AS min_id
+            FROM car_images
+            WHERE is_thumbnail = 1 OR is_thumbnail = '1'
+            GROUP BY car_id
+          ) t ON t.car_id = ci.car_id AND t.min_id = ci.image_id
+        ) ci1 ON ci1.car_id = c.car_id
+        LEFT JOIN (
+          SELECT ci.car_id, ci.image_path
+          FROM car_images ci
+          JOIN (
+            SELECT car_id, MIN(image_id) AS min_id
+            FROM car_images
+            GROUP BY car_id
+          ) t ON t.car_id = ci.car_id AND t.min_id = ci.image_id
+        ) ci2 ON ci2.car_id = c.car_id
+        WHERE c.seller_id = ? AND (c.listing_status IS NULL OR c.listing_status = 'open')
+        ORDER BY c.car_id DESC
+        LIMIT 5";
+if ($st = $mysqli->prepare($sql)) {
+  $st->bind_param('i', $sellerId);
+  if ($st->execute()) {
+    $r = $st->get_result();
+    while ($row = $r->fetch_assoc()) { $recentListings[] = $row; }
   }
+  $st->close();
 }
 ?>
 <!DOCTYPE html>
@@ -168,7 +165,7 @@ if (!empty($_SESSION['recently_viewed']) && is_array($_SESSION['recently_viewed'
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>My Profile</title>
+  <title>Seller Profile</title>
   <script src="https://cdn.tailwindcss.com"></script>
 </head>
 <body class="bg-gray-100 min-h-screen flex flex-col">
@@ -178,10 +175,9 @@ if (!empty($_SESSION['recently_viewed']) && is_array($_SESSION['recently_viewed'
       <h1 class="text-2xl font-bold">My Profile</h1>
       <nav>
         <ul class="flex gap-6">
-          <li><a href="main.php" class="hover:underline">Home</a></li>
-          <li><a href="car_view.php" class="hover:underline">Listings</a></li>
-          <li><a href="#" class="hover:underline">About</a></li>
-          <li><a href="buyer_profile.php" class="underline font-semibold">Profile</a></li>
+          <li><a href="seller_main.php" class="hover:underline">Dashboard</a></li>
+          <li><a href="unlist_car.php" class="hover:underline">Unlisted</a></li>
+          <li><a href="seller_profile.php" class="underline font-semibold">Profile</a></li>
           <li><a href="logout.php" class="hover:underline">Logout</a></li>
         </ul>
       </nav>
@@ -201,15 +197,15 @@ if (!empty($_SESSION['recently_viewed']) && is_array($_SESSION['recently_viewed'
       <form method="post" class="grid grid-cols-1 md:grid-cols-2 gap-4">
         <div class="md:col-span-2">
           <label class="block text-sm text-gray-600 mb-1">Name</label>
-          <input name="name" type="text" value="<?php echo htmlspecialchars($buyer['name'] ?? ''); ?>" class="w-full p-2 border rounded" required />
+          <input name="name" type="text" value="<?php echo htmlspecialchars($seller['name'] ?? ''); ?>" class="w-full p-2 border rounded" required />
         </div>
         <div>
           <label class="block text-sm text-gray-600 mb-1">Email</label>
-          <input type="email" value="<?php echo htmlspecialchars($buyer['email'] ?? ''); ?>" class="w-full p-2 border rounded bg-gray-100" readonly />
+          <input type="email" value="<?php echo htmlspecialchars($seller['email'] ?? ''); ?>" class="w-full p-2 border rounded bg-gray-100" readonly />
         </div>
         <div>
           <label class="block text-sm text-gray-600 mb-1">Phone</label>
-          <input name="phone" type="tel" value="<?php echo htmlspecialchars($buyer['phone'] ?? ''); ?>" class="w-full p-2 border rounded" required />
+          <input name="phone" type="tel" value="<?php echo htmlspecialchars($seller['phone'] ?? ''); ?>" class="w-full p-2 border rounded" required />
         </div>
         <div class="md:col-span-2 mt-2">
           <h3 class="font-semibold text-gray-800 mb-2">Change Password</h3>
@@ -229,20 +225,20 @@ if (!empty($_SESSION['recently_viewed']) && is_array($_SESSION['recently_viewed'
         </div>
       </form>
       <div class="mt-6">
-        <a href="main.php" class="inline-flex items-center bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg">Back to Home</a>
+        <a href="seller_main.php" class="inline-flex items-center bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg">Back to Dashboard</a>
       </div>
     </div>
 
-    <!-- RECENTLY VIEWED SECTION -->
+    <!-- RECENT LISTINGS SECTION -->
     <div class="max-w-6xl mx-auto mt-8 px-1">
       <div class="flex items-center justify-between mb-4">
-        <h3 class="text-xl font-bold">Recently Viewed</h3>
-        <a href="car_view.php" class="text-blue-600 hover:underline">Browse all</a>
+        <h3 class="text-xl font-bold">Your Recent Listings</h3>
+        <a href="seller_main.php" class="text-blue-600 hover:underline">Manage all</a>
       </div>
-      <?php if (!empty($recentCars)): ?>
+      <?php if (!empty($recentListings)): ?>
         <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
-          <?php foreach ($recentCars as $rc): ?>
-            <a href="car_details_view.php?car_id=<?php echo (int)$rc['car_id']; ?>" class="block bg-white rounded-xl shadow hover:shadow-lg transition overflow-hidden">
+          <?php foreach ($recentListings as $rc): ?>
+            <a href="car_details.php?car_id=<?php echo (int)$rc['car_id']; ?>" class="block bg-white rounded-xl shadow hover:shadow-lg transition overflow-hidden">
               <div class="bg-gray-200 w-full aspect-[4/3] overflow-hidden">
                 <?php if (!empty($rc['thumb'])): ?>
                   <img src="<?php echo htmlspecialchars($rc['thumb']); ?>" alt="<?php echo htmlspecialchars($rc['make'].' '.$rc['model']); ?>" class="w-full h-full object-cover" />
@@ -259,7 +255,7 @@ if (!empty($_SESSION['recently_viewed']) && is_array($_SESSION['recently_viewed'
           <?php endforeach; ?>
         </div>
       <?php else: ?>
-        <div class="text-gray-600">No cars viewed yet. Explore our <a class="text-blue-600 hover:underline" href="car_view.php">listings</a>.</div>
+        <div class="text-gray-600">No listings yet. Add your first car from the <a class="text-blue-600 hover:underline" href="seller_main.php">dashboard</a>.</div>
       <?php endif; ?>
     </div>
   </main>

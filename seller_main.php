@@ -15,31 +15,85 @@ $seller_id = $_SESSION['user_id']; // logged-in seller ID
 // ===== Predefined dropdown options =====
 $fuels = ['Gasoline','Diesel','Hybrid','Electric'];
 $driveSystems = ['FWD','RWD','AWD','4WD'];
-// Expanded makes and models
-$makes = ['Toyota','Honda','Mazda','BMW','Mercedes','Nissan','Ford','Volkswagen','Hyundai','Kia','Audi','Chevrolet','Subaru','Mitsubishi','Peugeot','Renault','Volvo','Suzuki','Lexus','Jeep'];
-$modelsByMake = [
-  'Toyota'      => ['Corolla','Camry','Yaris','Vios','Hilux','Fortuner','RAV4'],
-  'Honda'       => ['Civic','City','Accord','CR-V','Jazz','HR-V'],
-  'Mazda'       => ['CX-5','Mazda3','Mazda6','CX-3','BT-50'],
-  'BMW'         => ['X5','3 Series','5 Series','X3','1 Series'],
-  'Mercedes'    => ['C-Class','E-Class','GLC','A-Class','S-Class'],
-  'Nissan'      => ['Almera','X-Trail','Navara','Serena','Sylphy'],
-  'Ford'        => ['Focus','Ranger','Fiesta','Everest','Mustang'],
-  'Volkswagen'  => ['Golf','Polo','Passat','Tiguan','Jetta'],
-  'Hyundai'     => ['Elantra','Tucson','Santa Fe','Accent','Ioniq'],
-  'Kia'         => ['Cerato','Sportage','Sorento','Picanto','Optima'],
-  'Audi'        => ['A3','A4','A6','Q5','Q7'],
-  'Chevrolet'   => ['Cruze','Captiva','Colorado','Spark','Malibu'],
-  'Subaru'      => ['Forester','XV','Impreza','Outback','Legacy'],
-  'Mitsubishi'  => ['Triton','Outlander','Lancer','Xpander','ASX'],
-  'Peugeot'     => ['208','3008','5008','2008','508'],
-  'Renault'     => ['Captur','Koleos','Megane','Fluence','Clio'],
-  'Volvo'       => ['XC40','XC60','XC90','S60','V40'],
-  'Suzuki'      => ['Swift','Vitara','Ertiga','Jimny','Ciaz'],
-  'Lexus'       => ['RX','NX','ES','IS','UX'],
-  'Jeep'        => ['Wrangler','Cherokee','Compass','Renegade','Grand Cherokee']
+// Load Malaysia RHD makes/models dataset
+$makesModelsPath = __DIR__ . '/data/makes_models_my.json';
+$makes = [];
+$modelsByMake = [];
+if (file_exists($makesModelsPath)) {
+  $json = json_decode(file_get_contents($makesModelsPath), true);
+  if ($json) {
+    $makes = $json['makes'] ?? [];
+    // Deduplicate and sort makes alphabetically (case-insensitive)
+    $makes = array_values(array_unique($makes));
+    natcasesort($makes);
+    $makes = array_values($makes);
+
+    $modelsByMake = $json['modelsByMake'] ?? [];
+    // Sort model lists alphabetically as well
+    foreach ($modelsByMake as $mk => $arr) {
+      if (is_array($arr)) {
+        natcasesort($arr);
+        $modelsByMake[$mk] = array_values($arr);
+      }
+    }
+  }
+}
+$transmissions = ['AT','Manual','CVT','DCT','DHT'];
+
+// ===== Filters (GET) and sorting =====
+// Read filter params
+$f_q            = isset($_GET['q']) ? trim($_GET['q']) : '';
+$f_make         = isset($_GET['make']) ? trim($_GET['make']) : '';
+$f_model        = isset($_GET['model']) ? trim($_GET['model']) : '';
+$f_transmission = isset($_GET['transmission']) ? trim($_GET['transmission']) : '';
+$f_min_year     = isset($_GET['min_year']) && $_GET['min_year'] !== '' ? intval($_GET['min_year']) : null;
+$f_max_year     = isset($_GET['max_year']) && $_GET['max_year'] !== '' ? intval($_GET['max_year']) : null;
+$f_min_price    = isset($_GET['min_price']) && $_GET['min_price'] !== '' ? floatval($_GET['min_price']) : null;
+$f_max_price    = isset($_GET['max_price']) && $_GET['max_price'] !== '' ? floatval($_GET['max_price']) : null;
+$f_sort         = isset($_GET['sort']) ? $_GET['sort'] : 'newest';
+
+// Build dynamic WHERE and ORDER BY
+$where = ["seller_id = ?", "(listing_status IS NULL OR listing_status='open')"];
+$types = 'i';
+$params = [$seller_id];
+
+if ($f_q !== '') {
+  $like = '%' . $mysqli->real_escape_string($f_q) . '%';
+  // we'll bind these as strings
+  $where[] = "(make LIKE ? OR model LIKE ? OR variant LIKE ?)";
+  $types .= 'sss';
+  $params[] = $like; $params[] = $like; $params[] = $like;
+}
+if ($f_make !== '') {
+  $where[] = "make = ?";
+  $types .= 's';
+  $params[] = $f_make;
+}
+if ($f_model !== '') {
+  $where[] = "model = ?";
+  $types .= 's';
+  $params[] = $f_model;
+}
+if ($f_transmission !== '') {
+  $where[] = "transmission = ?";
+  $types .= 's';
+  $params[] = $f_transmission;
+}
+if (!is_null($f_min_year)) { $where[] = "year >= ?"; $types .= 'i'; $params[] = $f_min_year; }
+if (!is_null($f_max_year)) { $where[] = "year <= ?"; $types .= 'i'; $params[] = $f_max_year; }
+if (!is_null($f_min_price)) { $where[] = "price >= ?"; $types .= 'd'; $params[] = $f_min_price; }
+if (!is_null($f_max_price)) { $where[] = "price <= ?"; $types .= 'd'; $params[] = $f_max_price; }
+
+$sortWhitelist = [
+  'newest'       => 'car_id DESC',
+  'price_low'    => 'price ASC',
+  'price_high'   => 'price DESC',
+  'year_new'     => 'year DESC',
+  'year_old'     => 'year ASC',
+  'mileage_low'  => 'mileage ASC',
+  'mileage_high' => 'mileage DESC'
 ];
-$transmissions = ['AT','Manual','CVT','DCT'];
+$orderBy = isset($sortWhitelist[$f_sort]) ? $sortWhitelist[$f_sort] : $sortWhitelist['newest'];
 
 // ===== ADD CAR =====
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['add_car'])) {
@@ -142,11 +196,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['edit_car'])) {
   exit();
 }
 
-// ===== Fetch cars =====
+// ===== Fetch cars with filters/sort =====
 // Remove color from SELECT and variable list
-$cars = $mysqli->prepare("SELECT car_id, make, model, variant, year, engine_capacity, mileage, transmission, price, fuel, drive_system, doors 
-  FROM cars WHERE seller_id = ?");
-$cars->bind_param("i", $seller_id);
+$sql = "SELECT car_id, make, model, variant, year, engine_capacity, mileage, transmission, price, fuel, drive_system, doors, listing_status FROM cars WHERE " . implode(' AND ', $where) . " ORDER BY $orderBy";
+$cars = $mysqli->prepare($sql);
+if (!$cars) {
+  die('Query error: ' . $mysqli->error);
+}
+// dynamic bind
+if ($types !== '') {
+  $bindParams = [$types];
+  // bind_param requires references
+  foreach ($params as $key => $val) { $bindParams[] = &$params[$key]; }
+  call_user_func_array([$cars, 'bind_param'], $bindParams);
+}
 $cars->execute();
 $carsResult = $cars->get_result();
 
@@ -199,6 +262,25 @@ function updateModelOptions(makeSelect, modelSelectId, selectedModel='') {
         modelSelect.appendChild(opt);
     }
 }
+// Filter-specific updater that keeps an 'All' option
+function updateModelOptionsFilter(makeSelect, modelSelectId, selectedModel='') {
+  const make = makeSelect.value;
+  const modelSelect = document.getElementById(modelSelectId);
+  modelSelect.innerHTML = '';
+  const allOpt = document.createElement('option');
+  allOpt.value = '';
+  allOpt.text = 'All';
+  if (selectedModel === '') allOpt.selected = true;
+  modelSelect.appendChild(allOpt);
+  if (modelsByMake[make]) {
+    modelsByMake[make].forEach(m => {
+      const opt = document.createElement('option');
+      opt.value = m; opt.text = m;
+      if (m === selectedModel) opt.selected = true;
+      modelSelect.appendChild(opt);
+    });
+  }
+}
 </script>
 </head>
 <body class="bg-gray-100">
@@ -208,6 +290,7 @@ function updateModelOptions(makeSelect, modelSelectId, selectedModel='') {
     <nav>
       <ul class="flex gap-6">
         <li><a href="seller_main.php" class="hover:underline">Dashboard</a></li>
+        <li><a href="seller_profile.php" class="hover:underline">Profile</a></li>
         <li><a href="logout.php" class="hover:underline">Logout</a></li>
       </ul>
     </nav>
@@ -218,9 +301,96 @@ function updateModelOptions(makeSelect, modelSelectId, selectedModel='') {
   <?php if(!empty($success)) echo "<p class='text-green-600 mb-4'>$success</p>"; ?>
   <?php if(!empty($error)) echo "<p class='text-red-600 mb-4'>$error</p>"; ?>
 
-  <button onclick="toggleModal('addCarModal')" class="bg-red-600 text-white px-4 py-2 rounded hover:bg-red-700 mb-4">
-    + Add Car
-  </button>
+  <div class="flex gap-3 mb-4">
+    <button onclick="toggleModal('addCarModal')" class="bg-red-600 text-white px-4 py-2 rounded hover:bg-red-700">
+      + Add Car
+    </button>
+    <a href="unlist_car.php" class="bg-gray-700 text-white px-4 py-2 rounded hover:bg-gray-800">Unlisted Cars</a>
+    <button type="button" onclick="toggleModal('filterModal')" class="bg-red-600 text-white px-4 py-2 rounded hover:bg-red-700">Filter</button>
+  </div>
+
+  <!-- Filter Modal -->
+  <div id="filterModal" class="fixed inset-0 bg-black bg-opacity-50 flex justify-center items-center hidden">
+    <div class="bg-white rounded-xl shadow-lg p-6 w-full max-w-4xl">
+      <div class="flex items-center justify-between mb-4">
+        <h2 class="text-xl font-bold">Filter & Sort</h2>
+        <button type="button" onclick="toggleModal('filterModal')" class="text-gray-500 hover:text-gray-700">✕</button>
+      </div>
+      <form method="get" class="grid grid-cols-1 md:grid-cols-6 gap-3 items-end">
+        <div class="md:col-span-2">
+          <label class="block text-sm text-gray-700">Search</label>
+          <input type="text" name="q" value="<?php echo htmlspecialchars($f_q); ?>" placeholder="Make / Model / Variant" class="border p-2 rounded w-full">
+        </div>
+        <div>
+          <label class="block text-sm text-gray-700">Make</label>
+          <select name="make" id="filterMake" onchange="updateModelOptionsFilter(this,'filterModel','<?php echo htmlspecialchars($f_model); ?>')" class="border p-2 rounded w-full">
+            <option value="">All</option>
+            <?php foreach($makes as $m): ?>
+              <option value="<?php echo $m; ?>" <?php if($f_make===$m) echo 'selected'; ?>><?php echo $m; ?></option>
+            <?php endforeach; ?>
+          </select>
+        </div>
+        <div>
+          <label class="block text-sm text-gray-700">Model</label>
+          <select name="model" id="filterModel" class="border p-2 rounded w-full">
+            <option value="">All</option>
+          </select>
+        </div>
+        <div>
+          <label class="block text-sm text-gray-700">Transmission</label>
+          <select name="transmission" class="border p-2 rounded w-full">
+            <option value="">All</option>
+            <?php foreach($transmissions as $t): ?>
+              <option value="<?php echo $t; ?>" <?php if($f_transmission===$t) echo 'selected'; ?>><?php echo $t; ?></option>
+            <?php endforeach; ?>
+          </select>
+        </div>
+        <div>
+          <label class="block text-sm text-gray-700">Year Min</label>
+          <input type="number" name="min_year" min="1980" max="2025" value="<?php echo htmlspecialchars($f_min_year ?? ''); ?>" class="border p-2 rounded w-full">
+        </div>
+        <div>
+          <label class="block text-sm text-gray-700">Year Max</label>
+          <input type="number" name="max_year" min="1980" max="2025" value="<?php echo htmlspecialchars($f_max_year ?? ''); ?>" class="border p-2 rounded w-full">
+        </div>
+        <div>
+          <label class="block text-sm text-gray-700">Price Min (RM)</label>
+          <input type="number" step="0.01" name="min_price" value="<?php echo htmlspecialchars($f_min_price ?? ''); ?>" class="border p-2 rounded w-full">
+        </div>
+        <div>
+          <label class="block text-sm text-gray-700">Price Max (RM)</label>
+          <input type="number" step="0.01" name="max_price" value="<?php echo htmlspecialchars($f_max_price ?? ''); ?>" class="border p-2 rounded w-full">
+        </div>
+        <div>
+          <label class="block text-sm text-gray-700">Sort by</label>
+          <select name="sort" class="border p-2 rounded w-full">
+            <option value="newest" <?php if($f_sort==='newest') echo 'selected'; ?>>Newest</option>
+            <option value="price_low" <?php if($f_sort==='price_low') echo 'selected'; ?>>Price: Low to High</option>
+            <option value="price_high" <?php if($f_sort==='price_high') echo 'selected'; ?>>Price: High to Low</option>
+            <option value="year_new" <?php if($f_sort==='year_new') echo 'selected'; ?>>Year: New to Old</option>
+            <option value="year_old" <?php if($f_sort==='year_old') echo 'selected'; ?>>Year: Old to New</option>
+            <option value="mileage_low" <?php if($f_sort==='mileage_low') echo 'selected'; ?>>Mileage: Low to High</option>
+            <option value="mileage_high" <?php if($f_sort==='mileage_high') echo 'selected'; ?>>Mileage: High to Low</option>
+          </select>
+        </div>
+        <div class="md:col-span-6 flex gap-2 justify-end mt-2">
+          <a href="seller_main.php" class="px-4 py-2 bg-gray-200 rounded">Reset</a>
+          <button type="button" onclick="toggleModal('filterModal')" class="px-4 py-2 bg-gray-400 text-white rounded">Cancel</button>
+          <button type="submit" class="px-4 py-2 bg-red-600 text-white rounded">Apply</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <script>
+    // Initialize filter model options on load based on selected make/model
+    document.addEventListener('DOMContentLoaded', function(){
+      const makeSel = document.getElementById('filterMake');
+      if (makeSel) {
+        updateModelOptionsFilter(makeSel, 'filterModel', '<?php echo htmlspecialchars($f_model); ?>');
+      }
+    });
+  </script>
 
   <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
     <?php while($row = $carsResult->fetch_assoc()): ?>
@@ -233,6 +403,7 @@ function updateModelOptions(makeSelect, modelSelectId, selectedModel='') {
           <a href="car_details.php?car_id=<?php echo $row['car_id']; ?>" class="bg-blue-500 text-white px-2 py-1 rounded">View</a>
           <button onclick="toggleModal('editModal<?php echo $row['car_id']; ?>')" class="bg-yellow-500 text-white px-2 py-1 rounded">Edit</button>
           <a href="seller_main.php?delete=<?php echo $row['car_id']; ?>" onclick="return confirm('Delete this car?')" class="bg-red-500 text-white px-2 py-1 rounded">Delete</a>
+          <a href="unlist_car.php?car_id=<?php echo $row['car_id']; ?>" class="bg-gray-600 text-white px-2 py-1 rounded">Unlist</a>
         </div>
       </div>
 

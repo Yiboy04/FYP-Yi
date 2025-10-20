@@ -27,8 +27,8 @@ $resImg = $imgQ->get_result();
 while ($row = $resImg->fetch_assoc()) $imgs[] = $row['image_path'];
 $imgQ->close();
 
-// fetch car_details (includes optional car_condition)
-$details = $mysqli->prepare("SELECT color, horsepower, engine_code, gear_numbers, wheel_size, seller_note, car_condition FROM car_details WHERE car_id=?");
+// fetch car_details (includes optional fields)
+$details = $mysqli->prepare("SELECT color, horsepower, engine_code, gear_numbers, front_wheel_size, rear_wheel_size, torque, car_type, seller_note, car_condition FROM car_details WHERE car_id=?");
 $details->bind_param("i", $car_id);
 $details->execute();
 $car_details = $details->get_result()->fetch_assoc();
@@ -41,7 +41,7 @@ if (!$car_details) {
     $ins->execute();
     $ins->close();
     // Re-fetch after insert
-  $details = $mysqli->prepare("SELECT color, horsepower, engine_code, gear_numbers, wheel_size, seller_note, car_condition FROM car_details WHERE car_id=?");
+  $details = $mysqli->prepare("SELECT color, horsepower, engine_code, gear_numbers, front_wheel_size, rear_wheel_size, torque, car_type, seller_note, car_condition FROM car_details WHERE car_id=?");
     $details->bind_param("i", $car_id);
     $details->execute();
     $car_details = $details->get_result()->fetch_assoc();
@@ -54,7 +54,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update_details'])) {
     $horsepower = intval($_POST['horsepower']);
     $engine_code = $mysqli->real_escape_string($_POST['engine_code']);
     $gear_numbers = intval($_POST['gear_numbers']);
-    $wheel_size = $mysqli->real_escape_string($_POST['wheel_size']);
+    $front_wheel_size = $mysqli->real_escape_string($_POST['front_wheel_size']);
+    $rear_wheel_size = $mysqli->real_escape_string($_POST['rear_wheel_size']);
+    $torque = $mysqli->real_escape_string($_POST['torque']);
     // Validate condition (nullable)
     $allowed_conditions = ['New','Reconditioned','Used','Certified'];
     $car_condition = isset($_POST['car_condition']) && in_array($_POST['car_condition'], $allowed_conditions)
@@ -63,8 +65,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update_details'])) {
     if ($car_condition !== null) {
       $car_condition = $mysqli->real_escape_string($car_condition);
     }
-  $stmt = $mysqli->prepare("UPDATE car_details SET color=?, horsepower=?, engine_code=?, gear_numbers=?, wheel_size=?, car_condition=? WHERE car_id=?");
-  $stmt->bind_param("sisissi", $color, $horsepower, $engine_code, $gear_numbers, $wheel_size, $car_condition, $car_id);
+    // Validate car type (nullable)
+    $allowed_types = ['Sedan','SUV','Pickup','Coupe','Hatchback','Wagon','Convertible','Van','MPV','Crossover','Sports','Other'];
+    $car_type = isset($_POST['car_type']) && in_array($_POST['car_type'], $allowed_types) ? $_POST['car_type'] : null;
+    if ($car_type !== null) {
+      $car_type = $mysqli->real_escape_string($car_type);
+    }
+
+    $stmt = $mysqli->prepare("UPDATE car_details SET color=?, horsepower=?, engine_code=?, gear_numbers=?, front_wheel_size=?, rear_wheel_size=?, torque=?, car_type=?, car_condition=? WHERE car_id=?");
+    $stmt->bind_param("sisisssssi", $color, $horsepower, $engine_code, $gear_numbers, $front_wheel_size, $rear_wheel_size, $torque, $car_type, $car_condition, $car_id);
     $stmt->execute();
     $stmt->close();
     header("Location: car_details.php?car_id=$car_id");
@@ -143,6 +152,12 @@ function changeMain(src){
                 <?php endif; ?>
           </div>
         </div>
+        <!-- Seller guidance notice -->
+        <div class="bg-yellow-50 border-l-4 border-yellow-400 text-yellow-800 p-4 mb-4 rounded" role="alert">
+          <div class="font-semibold mb-1">Tip for better visibility</div>
+          <p class="text-sm">Car details can be left blank, but completing them (for example Colour, Condition, Wheel Size, etc.) helps buyers find your listing using filters and improves trust in your ad.</p>
+        </div>
+
         <div class="bg-gray-50 rounded-lg shadow p-4 mb-4">
           <h3 class="text-lg font-semibold mb-2 text-blue-600">Car Details</h3>
           <form method="post" class="grid grid-cols-2 gap-4">
@@ -150,7 +165,25 @@ function changeMain(src){
             <input type="number" name="horsepower" value="<?php echo htmlspecialchars($car_details['horsepower'] ?? ''); ?>" placeholder="Horsepower" class="border p-2 rounded">
             <input type="text" name="engine_code" value="<?php echo htmlspecialchars($car_details['engine_code'] ?? ''); ?>" placeholder="Engine Code" class="border p-2 rounded">
             <input type="number" name="gear_numbers" value="<?php echo htmlspecialchars($car_details['gear_numbers'] ?? ''); ?>" placeholder="Gear Numbers" class="border p-2 rounded">
-            <input type="text" name="wheel_size" value="<?php echo htmlspecialchars($car_details['wheel_size'] ?? ''); ?>" placeholder="Wheel Size" class="border p-2 rounded">
+            <input type="text" name="front_wheel_size" value="<?php echo htmlspecialchars($car_details['front_wheel_size'] ?? ''); ?>" placeholder="Front Wheel Size" class="border p-2 rounded">
+            <input type="text" name="rear_wheel_size" value="<?php echo htmlspecialchars($car_details['rear_wheel_size'] ?? ''); ?>" placeholder="Rear Wheel Size" class="border p-2 rounded">
+            <input type="text" name="torque" value="<?php echo htmlspecialchars($car_details['torque'] ?? ''); ?>" placeholder="Torque (e.g. 250 Nm)" class="border p-2 rounded">
+            <select name="car_type" class="border p-2 rounded">
+              <?php $type = $car_details['car_type'] ?? ''; ?>
+              <option value="" <?php echo $type==='' ? 'selected' : ''; ?>>Car Type (optional)</option>
+              <option value="Sedan" <?php echo $type==='Sedan' ? 'selected' : ''; ?>>Sedan</option>
+              <option value="SUV" <?php echo $type==='SUV' ? 'selected' : ''; ?>>SUV</option>
+              <option value="Pickup" <?php echo $type==='Pickup' ? 'selected' : ''; ?>>Pickup</option>
+              <option value="Coupe" <?php echo $type==='Coupe' ? 'selected' : ''; ?>>Coupe</option>
+              <option value="Hatchback" <?php echo $type==='Hatchback' ? 'selected' : ''; ?>>Hatchback</option>
+              <option value="Wagon" <?php echo $type==='Wagon' ? 'selected' : ''; ?>>Wagon</option>
+              <option value="Convertible" <?php echo $type==='Convertible' ? 'selected' : ''; ?>>Convertible</option>
+              <option value="Van" <?php echo $type==='Van' ? 'selected' : ''; ?>>Van</option>
+              <option value="MPV" <?php echo $type==='MPV' ? 'selected' : ''; ?>>MPV</option>
+              <option value="Crossover" <?php echo $type==='Crossover' ? 'selected' : ''; ?>>Crossover</option>
+              <option value="Sports" <?php echo $type==='Sports' ? 'selected' : ''; ?>>Sports</option>
+              <option value="Other" <?php echo $type==='Other' ? 'selected' : ''; ?>>Other</option>
+            </select>
             <select name="car_condition" class="border p-2 rounded">
               <?php $cond = $car_details['car_condition'] ?? ''; ?>
               <option value="" <?php echo $cond==='' ? 'selected' : ''; ?>>Condition (optional)</option>
