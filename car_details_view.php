@@ -75,7 +75,7 @@ function changeMain(src){
   document.getElementById('mainImage').src=src;
 }
 </script>
-</head>
+</head> <!-- HEADER -->
 <body class="bg-gray-100">
 <header class="bg-red-600 text-white p-4">
   <div class="container mx-auto flex justify-between items-center">

@@ -417,7 +417,7 @@ if (!empty($_SESSION['recently_viewed']) && is_array($_SESSION['recently_viewed'
     const bImg = document.getElementById('bgBImg');
     if (!a || !b || !aImg || !bImg) return;
     let idx = 0;
-    const fadeMs = 700;
+    const fadeMs = 150;
     const delayMs = 2500; // quicker rotation
     function ensureDecoded(src){
       return new Promise((resolve) => {

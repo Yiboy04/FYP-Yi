@@ -177,7 +177,14 @@ if (!empty($_SESSION['recently_viewed']) && is_array($_SESSION['recently_viewed'
     <div class="container mx-auto flex justify-between items-center">
       <h1 class="text-2xl font-bold">My Profile</h1>
       <nav>
-        <ul class="flex gap-6">
+        <ul class="flex gap-6 items-center">
+          <li>
+            <a href="saved_search.php" class="inline-flex items-center" title="Saved Searches">
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" class="w-6 h-6 text-white hover:text-gray-200">
+                <path d="M6 2a2 2 0 0 0-2 2v18l8-4 8 4V4a2 2 0 0 0-2-2H6z"/>
+              </svg>
+            </a>
+          </li>
           <li><a href="main.php" class="hover:underline">Home</a></li>
           <li><a href="car_view.php" class="hover:underline">Listings</a></li>
           <li><a href="#" class="hover:underline">About</a></li>

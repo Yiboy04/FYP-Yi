@@ -51,7 +51,7 @@ if (isset($_GET['unsave'])) {
 
 // Fetch saved cars with thumbnail-first logic
 $saved = [];
-$sql = "SELECT c.car_id, c.make, c.model, c.year, c.price,
+$sql = "SELECT c.car_id, c.make, c.model, c.year, c.variant, c.price,
                COALESCE(ci1.image_path, ci2.image_path) AS thumb,
                sc.saved_at
         FROM saved_cars sc
@@ -75,7 +75,7 @@ $sql = "SELECT c.car_id, c.make, c.model, c.year, c.price,
             GROUP BY car_id
           ) t ON t.car_id = ci.car_id AND t.min_id = ci.image_id
         ) ci2 ON ci2.car_id = c.car_id
-        WHERE sc.buyer_id = ?
+         WHERE sc.buyer_id = ? 
         ORDER BY sc.saved_at DESC";
 if ($st = $mysqli->prepare($sql)) {
   $st->bind_param('i', $buyerId);
@@ -145,7 +145,7 @@ if ($st = $mysqli->prepare($sql)) {
             </a>
             <div class="p-3">
               <div class="font-semibold truncate"><?php echo htmlspecialchars($car['make'].' '.$car['model']); ?></div>
-              <div class="text-sm text-gray-500"><?php echo htmlspecialchars($car['year']); ?></div>
+                <div class="text-sm text-gray-500"><?php echo htmlspecialchars($car['year']); ?><?php if(!empty($car['variant'])): ?> · <?php echo htmlspecialchars($car['variant']); ?><?php endif; ?></div>
               <div class="text-red-600 font-bold">RM <?php echo number_format((float)$car['price'], 2); ?></div>
               <div class="mt-2 flex justify-between items-center">
                 <a href="car_details_view.php?car_id=<?php echo (int)$car['car_id']; ?>" class="text-blue-600 hover:underline text-sm">View details</a>
