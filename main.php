@@ -55,6 +55,50 @@ if (!empty($_SESSION['recently_viewed']) && is_array($_SESSION['recently_viewed'
     }
   }
 }
+
+// --- Mini insight (random view) ---
+$views = ['make','model','transmission','condition'];
+try {
+  $randIdx = random_int(0, count($views)-1);
+  $chartView = $views[$randIdx];
+} catch (Throwable $e) {
+  $chartView = $views[array_rand($views)];
+}
+$insight = [
+  'view' => $chartView,
+  'title' => '',
+  'labels' => [],
+  'values' => []
+];
+if ($chartView === 'make') {
+  $sql = "SELECT make AS label, COUNT(*) AS sold FROM cars GROUP BY make ORDER BY sold DESC LIMIT 5";
+  if ($res = $mysqli->query($sql)) {
+    while ($row = $res->fetch_assoc()) { $insight['labels'][] = $row['label']; $insight['values'][] = (int)$row['sold']; }
+    $res->free();
+  }
+  $insight['title'] = 'Top 5 by Make';
+} elseif ($chartView === 'model') {
+  $sql = "SELECT model, make, COUNT(*) AS sold FROM cars GROUP BY model, make ORDER BY sold DESC LIMIT 5";
+  if ($res = $mysqli->query($sql)) {
+    while ($row = $res->fetch_assoc()) { $label = trim($row['model']); if (!empty($row['make'])) { $label .= ' (' . $row['make'] . ')'; } $insight['labels'][] = $label; $insight['values'][] = (int)$row['sold']; }
+    $res->free();
+  }
+  $insight['title'] = 'Top 5 Models';
+} elseif ($chartView === 'transmission') {
+  $sql = "SELECT COALESCE(c.transmission,'—') AS label, COUNT(*) AS sold FROM cars c GROUP BY c.transmission ORDER BY sold DESC, label ASC LIMIT 5";
+  if ($res = $mysqli->query($sql)) {
+    while ($row = $res->fetch_assoc()) { $insight['labels'][] = $row['label']; $insight['values'][] = (int)$row['sold']; }
+    $res->free();
+  }
+  $insight['title'] = 'Top 5 by Transmission';
+} else { // condition
+  $sql = "SELECT COALESCE(cd.car_condition,'—') AS label, COUNT(*) AS sold FROM car_details cd JOIN cars c ON c.car_id = cd.car_id GROUP BY cd.car_condition ORDER BY sold DESC LIMIT 5";
+  if ($res = $mysqli->query($sql)) {
+    while ($row = $res->fetch_assoc()) { $insight['labels'][] = $row['label']; $insight['values'][] = (int)$row['sold']; }
+    $res->free();
+  }
+  $insight['title'] = 'Top 5 by Condition';
+}
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -62,6 +106,7 @@ if (!empty($_SESSION['recently_viewed']) && is_array($_SESSION['recently_viewed'
   <meta charset="UTF-8">
   <title>Main Page - Car Search</title>
   <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
 </head>
 <body class="bg-gray-100 flex flex-col min-h-screen">
 
@@ -71,25 +116,42 @@ if (!empty($_SESSION['recently_viewed']) && is_array($_SESSION['recently_viewed'
       <h1 class="text-2xl font-bold">MyCar (FYP)</h1>
       <nav>
         <ul class="flex gap-6 items-center">
-          <li>
-            <a href="saved_search.php" class="inline-flex items-center" title="Saved Searches">
-              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" class="w-6 h-6 text-white hover:text-gray-200">
-                <path d="M6 2a2 2 0 0 0-2 2v18l8-4 8 4V4a2 2 0 0 0-2-2H6z"/>
-              </svg>
-            </a>
-          </li>
           <li><a href="main.php" class="hover:underline">Home</a></li>
           <li><a href="car_view.php" class="hover:underline">Listings</a></li>
-          <li><a href="#" class="hover:underline">About</a></li>
           <?php if (!empty($_SESSION['role']) && $_SESSION['role']==='buyer'): ?>
-            <li><a href="buyer_bookings.php" class="hover:underline">Bookings</a></li>
             <li><a href="buyer_profile.php" class="hover:underline">Profile</a></li>
           <?php endif; ?>
+          <!-- Fold-down menu -->
+          <li class="relative" id="moreMenu">
+            <button id="moreBtn" class="inline-flex items-center gap-1 px-3 py-1 bg-white bg-opacity-10 hover:bg-opacity-20 rounded">
+              <span>More</span>
+              <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M5.23 7.21a.75.75 0 011.06.02L10 10.94l3.71-3.71a.75.75 0 111.06 1.06l-4.24 4.24a.75.75 0 01-1.06 0L5.21 8.29a.75.75 0 01.02-1.08z" clip-rule="evenodd"/></svg>
+            </button>
+            <div id="morePanel" class="hidden absolute right-0 mt-2 w-52 bg-white text-gray-800 rounded-md shadow-lg py-1 z-50">
+              <a href="analysis.php" class="block px-4 py-2 hover:bg-gray-100">Analysis</a>
+              <a href="saved_search.php" class="block px-4 py-2 hover:bg-gray-100">Saved</a>
+              <?php if (!empty($_SESSION['role']) && $_SESSION['role']==='buyer'): ?>
+                <a href="buyer_bookings.php" class="block px-4 py-2 hover:bg-gray-100">Bookings</a>
+              <?php endif; ?>
+              <a href="#" class="block px-4 py-2 hover:bg-gray-100">About</a>
+            </div>
+          </li>
           <li><a href="logout.php" class="hover:underline">Logout</a></li>
         </ul>
       </nav>
     </div>
   </header>
+  <script>
+    // Simple dropdown toggle for header "More" menu
+    (function(){
+      const menu = document.getElementById('moreMenu');
+      const btn = document.getElementById('moreBtn');
+      const panel = document.getElementById('morePanel');
+      if (!menu || !btn || !panel) return;
+      btn.addEventListener('click', (e) => { e.preventDefault(); panel.classList.toggle('hidden'); });
+      document.addEventListener('click', (e) => { if (!menu.contains(e.target)) panel.classList.add('hidden'); });
+    })();
+  </script>
 
   <!-- MAIN CONTENT -->
   <main class="flex-grow relative overflow-hidden">
@@ -197,6 +259,26 @@ if (!empty($_SESSION['recently_viewed']) && is_array($_SESSION['recently_viewed'
       <?php else: ?>
         <div class="text-gray-600">No cars viewed yet. Explore our <a class="text-blue-600 hover:underline" href="car_view.php">listings</a>.</div>
       <?php endif; ?>
+    </div>
+  </section>
+
+  <!-- MINI ANALYSIS CHART -->
+  <section class="py-10">
+    <div class="container mx-auto max-w-3xl px-4">
+      <div class="bg-white rounded-2xl shadow-xl p-6">
+        <div class="flex items-center justify-between mb-2">
+          <h2 class="text-2xl font-bold">Quick Insight</h2>
+          <a href="analysis.php" class="text-blue-600 hover:underline text-sm">See full analysis</a>
+        </div>
+        <div class="text-gray-600 mb-4"><?php echo htmlspecialchars($insight['title']); ?></div>
+        <?php if (!empty($insight['labels'])): ?>
+          <div class="relative">
+            <canvas id="miniInsightChart" height="240"></canvas>
+          </div>
+        <?php else: ?>
+          <div class="text-gray-500">No data available for insight right now.</div>
+        <?php endif; ?>
+      </div>
     </div>
   </section>
 
@@ -582,6 +664,46 @@ if (!empty($_SESSION['recently_viewed']) && is_array($_SESSION['recently_viewed'
       distUnit.addEventListener(evt, recalc);
       fuel.addEventListener(evt, recalc);
       fuelUnit.addEventListener(evt, recalc);
+    });
+  })();
+
+  // --- Mini Insight Chart ---
+  (function(){
+    const data = <?php echo json_encode($insight, JSON_UNESCAPED_UNICODE); ?>;
+    if (!data || !data.labels || data.labels.length === 0) return;
+    const ctx = document.getElementById('miniInsightChart');
+    if (!ctx) return;
+    const palette = ['#ef4444','#f59e0b','#10b981','#3b82f6','#8b5cf6','#ec4899','#14b8a6','#22c55e','#f97316','#a1a1aa'];
+    const bg = data.values.map((_, i) => palette[i % palette.length] + 'CC');
+    const border = data.values.map((_, i) => palette[i % palette.length]);
+    new Chart(ctx, {
+      type: 'bar',
+      data: {
+        labels: data.labels,
+        datasets: [{
+          label: data.title,
+          data: data.values,
+          backgroundColor: bg,
+          borderColor: border,
+          borderWidth: 1,
+          borderRadius: 6,
+          barThickness: 18
+        }]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        indexAxis: 'y',
+        scales: {
+          x: { beginAtZero: true, grid: { color: 'rgba(0,0,0,0.05)' } },
+          y: { ticks: { color: '#374151' }, grid: { display: false } }
+        },
+        plugins: {
+          legend: { display: false },
+          tooltip: { enabled: true },
+          title: { display: false }
+        }
+      }
     });
   })();
 

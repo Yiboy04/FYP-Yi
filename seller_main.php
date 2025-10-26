@@ -230,6 +230,26 @@ if ($types !== '') {
 $cars->execute();
 $carsResult = $cars->get_result();
 
+// Collect cars into array so we can compute per-car pending booking counts in one query
+$carsRows = [];
+while ($r = $carsResult->fetch_assoc()) { $carsRows[] = $r; }
+
+// Build a map of car_id => pending_count
+$pendingCountMap = [];
+if (!empty($carsRows)) {
+  $carIds = array_map(function($row){ return (int)$row['car_id']; }, $carsRows);
+  $carIds = array_values(array_unique($carIds));
+  if (!empty($carIds)) {
+    $idsList = implode(',', array_map('intval', $carIds));
+    $q = $mysqli->query("SELECT car_id, COUNT(*) AS c FROM bookings WHERE status='pending' AND seller_id=".(int)$seller_id." AND car_id IN ($idsList) GROUP BY car_id");
+    if ($q) {
+      while ($pr = $q->fetch_assoc()) {
+        $pendingCountMap[(int)$pr['car_id']] = (int)$pr['c'];
+      }
+    }
+  }
+}
+
 // helper to fetch first image
 function getFirstImage($mysqli, $car_id) {
   // Try to get thumbnail first
@@ -410,8 +430,11 @@ function updateModelOptionsFilter(makeSelect, modelSelectId, selectedModel='') {
   </script>
 
   <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
-    <?php while($row = $carsResult->fetch_assoc()): ?>
-      <div class="bg-white rounded-xl shadow hover:shadow-lg p-4">
+    <?php foreach($carsRows as $row): ?>
+      <div class="relative bg-white rounded-xl shadow hover:shadow-lg p-4">
+        <?php $pending = isset($pendingCountMap[$row['car_id']]) ? (int)$pendingCountMap[$row['car_id']] : 0; if ($pending > 0): ?>
+          <span class="absolute top-2 right-2 bg-red-600 text-white text-xs font-bold rounded-full px-2 py-1"><?php echo $pending; ?></span>
+        <?php endif; ?>
         <img src="<?php echo htmlspecialchars(getFirstImage($mysqli, $row['car_id'])); ?>" class="w-full h-40 object-cover rounded" alt="Car">
         <h2 class="text-lg font-bold mt-2"><?php echo htmlspecialchars($row['make']." ".$row['model']); ?></h2>
         <p class="text-sm text-gray-600"><?php echo $row['year']." | ".$row['engine_capacity']." | ".$row['mileage']." km"; ?></p>
@@ -513,7 +536,7 @@ function updateModelOptionsFilter(makeSelect, modelSelectId, selectedModel='') {
             updateModelOptions(makeSel,'modelSelect<?php echo $row['car_id']; ?>','<?php echo $row['model']; ?>');
         });
       </script>
-    <?php endwhile; ?>
+    <?php endforeach; ?>
   </div>
 </div>
 

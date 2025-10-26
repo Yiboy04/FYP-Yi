@@ -342,12 +342,24 @@ if (count($carIds) > 0) {
               <a href="unlist_car_details.php?car_id=<?php echo $car['car_id']; ?>" class="bg-blue-600 hover:bg-blue-700 text-white px-3 py-1 rounded">View Details</a>
               <div class="flex gap-2">
                 <?php if (isset($car['listing_status']) && $car['listing_status'] === 'negotiating'): ?>
-                  <form method="post" onsubmit="return confirm('Mark this car as SOLD? This will keep it unlisted.');">
+                  <form id="markSoldForm<?php echo $car['car_id']; ?>" method="post">
                     <input type="hidden" name="car_id" value="<?php echo $car['car_id']; ?>">
                     <input type="hidden" name="action" value="unlist_set">
                     <input type="hidden" name="status" value="sold">
-                    <button type="submit" class="bg-red-600 hover:bg-red-700 text-white px-3 py-1 rounded">Mark Sold</button>
+                    <button type="button" onclick="toggleModal('confirmSold<?php echo $car['car_id']; ?>')" class="bg-red-600 hover:bg-red-700 text-white px-3 py-1 rounded">Mark Sold</button>
                   </form>
+
+                  <!-- Confirm Mark Sold Modal -->
+                  <div id="confirmSold<?php echo $car['car_id']; ?>" class="fixed inset-0 bg-black bg-opacity-50 flex justify-center items-center hidden">
+                    <div class="bg-white rounded-xl shadow-lg p-6 w-full max-w-sm">
+                      <h3 class="text-lg font-semibold mb-2">Mark as Sold?</h3>
+                      <p class="text-sm text-gray-600 mb-4">Are you sure you want to mark this car as SOLD? This will keep it unlisted.</p>
+                      <div class="flex justify-end gap-2">
+                        <button type="button" class="px-4 py-2 bg-gray-200 rounded" onclick="toggleModal('confirmSold<?php echo $car['car_id']; ?>')">Cancel</button>
+                        <button type="button" class="px-4 py-2 bg-red-600 text-white rounded" onclick="document.getElementById('markSoldForm<?php echo $car['car_id']; ?>').submit()">Yes, mark sold</button>
+                      </div>
+                    </div>
+                  </div>
                 <?php endif; ?>
                 <form method="post">
                   <input type="hidden" name="car_id" value="<?php echo $car['car_id']; ?>">
