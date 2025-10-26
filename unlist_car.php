@@ -39,7 +39,7 @@ if (file_exists($makesModelsPath)) {
 $f_q            = isset($_GET['q']) ? trim($_GET['q']) : '';
 $f_make         = isset($_GET['make']) ? trim($_GET['make']) : '';
 $f_model        = isset($_GET['model']) ? trim($_GET['model']) : '';
-$f_status       = isset($_GET['status']) ? trim($_GET['status']) : 'all'; // all|sold|considering
+$f_status       = isset($_GET['status']) ? trim($_GET['status']) : 'all'; // all|sold|considering|negotiating
 $f_transmission = isset($_GET['transmission']) ? trim($_GET['transmission']) : '';
 $f_min_year     = isset($_GET['min_year']) && $_GET['min_year'] !== '' ? intval($_GET['min_year']) : null;
 $f_max_year     = isset($_GET['max_year']) && $_GET['max_year'] !== '' ? intval($_GET['max_year']) : null;
@@ -69,7 +69,7 @@ if ($_SERVER['REQUEST_METHOD']==='POST') {
       $stmt->close();
     } elseif ($_POST['action']==='unlist_set' && isset($_POST['status'])) {
       $status = $_POST['status'];
-      $allowed = ['sold','considering'];
+      $allowed = ['sold','considering','negotiating'];
       if (in_array($status, $allowed, true)) {
         $stmt = $mysqli->prepare("UPDATE cars SET listing_status=? WHERE car_id=? AND seller_id=?");
         $stmt->bind_param('sii', $status, $car_id, $seller_id);
@@ -98,10 +98,10 @@ if (isset($_GET['car_id'])) {
 $where = ["seller_id = ?"];
 $types = 'i';
 $params = [$seller_id];
-if ($f_status === 'sold' || $f_status === 'considering') {
+if (in_array($f_status, ['sold','considering','negotiating'], true)) {
   $where[] = "listing_status = ?"; $types .= 's'; $params[] = $f_status;
 } else {
-  $where[] = "listing_status IN ('sold','considering')";
+  $where[] = "listing_status IN ('sold','considering','negotiating')";
 }
 if ($f_q !== '') {
   $like = '%' . $mysqli->real_escape_string($f_q) . '%';
@@ -200,6 +200,7 @@ if (count($carIds) > 0) {
             <option value="all" <?php if($f_status==='all') echo 'selected'; ?>>All</option>
             <option value="sold" <?php if($f_status==='sold') echo 'selected'; ?>>Sold</option>
             <option value="considering" <?php if($f_status==='considering') echo 'selected'; ?>>Considering</option>
+            <option value="negotiating" <?php if($f_status==='negotiating') echo 'selected'; ?>>Negotiating</option>
           </select>
         </div>
         <div>
@@ -210,15 +211,16 @@ if (count($carIds) > 0) {
             <option value="Manual" <?php if($f_transmission==='Manual') echo 'selected'; ?>>Manual</option>
             <option value="CVT" <?php if($f_transmission==='CVT') echo 'selected'; ?>>CVT</option>
             <option value="DCT" <?php if($f_transmission==='DCT') echo 'selected'; ?>>DCT</option>
+            <option value="DHT" <?php if($f_transmission==='DHT') echo 'selected'; ?>>DHT</option>
           </select>
         </div>
         <div>
           <label class="block text-sm text-gray-700">Year Min</label>
-          <input type="number" name="min_year" value="<?php echo htmlspecialchars($f_min_year ?? ''); ?>" class="border p-2 rounded w-full">
+          <input type="number" name="min_year" min="1980" max="2025" value="<?php echo htmlspecialchars($f_min_year ?? ''); ?>" class="border p-2 rounded w-full">
         </div>
         <div>
           <label class="block text-sm text-gray-700">Year Max</label>
-          <input type="number" name="max_year" value="<?php echo htmlspecialchars($f_max_year ?? ''); ?>" class="border p-2 rounded w-full">
+          <input type="number" name="max_year" min="1980" max="2025" value="<?php echo htmlspecialchars($f_max_year ?? ''); ?>" class="border p-2 rounded w-full">
         </div>
         <div>
           <label class="block text-sm text-gray-700">Price Min (RM)</label>
@@ -249,6 +251,35 @@ if (count($carIds) > 0) {
     </div>
   </div>
   <script>
+    // Simple modal toggle helper for showing/hiding by id
+    function toggleModal(id) {
+      const el = document.getElementById(id);
+      if (!el) return;
+      const isHidden = el.classList.contains('hidden');
+      if (isHidden) {
+        el.classList.remove('hidden');
+        document.body.classList.add('overflow-hidden');
+      } else {
+        el.classList.add('hidden');
+        document.body.classList.remove('overflow-hidden');
+      }
+    }
+
+    // Close the filter modal when clicking on the backdrop or pressing Escape
+    document.addEventListener('click', function(e) {
+      const modal = document.getElementById('filterModal');
+      if (!modal || modal.classList.contains('hidden')) return;
+      if (e.target === modal) {
+        toggleModal('filterModal');
+      }
+    });
+    document.addEventListener('keydown', function(e) {
+      if (e.key === 'Escape') {
+        const modal = document.getElementById('filterModal');
+        if (modal && !modal.classList.contains('hidden')) toggleModal('filterModal');
+      }
+    });
+
     // JS for dynamic models specific to filter usage (includes 'All')
     const modelsByMake = <?php echo json_encode($modelsByMake); ?>;
     function updateModelOptions(makeSelect, modelSelectId, selectedModel='') {
@@ -287,6 +318,7 @@ if (count($carIds) > 0) {
           <select name="status" class="border p-2 rounded">
             <option value="sold">Sold</option>
             <option value="considering">Considering</option>
+            <option value="negotiating">Negotiating</option>
           </select>
         </label>
         <button type="submit" class="bg-gray-700 text-white px-4 py-2 rounded">Confirm Unlist</button>
@@ -306,13 +338,23 @@ if (count($carIds) > 0) {
             <div class="text-gray-700 text-sm mb-1">Year: <?php echo htmlspecialchars($car['year']); ?> | Engine: <?php echo htmlspecialchars($car['engine_capacity']); ?> L</div>
             <div class="text-red-600 font-bold mb-2">RM <?php echo number_format($car['price'],2); ?></div>
             <div class="text-xs text-gray-500 mb-2">Status: <?php echo htmlspecialchars($car['listing_status']); ?></div>
-            <div class="mt-auto flex justify-between items-center gap-2">
+            <div class="mt-auto flex flex-wrap justify-between items-center gap-2">
               <a href="unlist_car_details.php?car_id=<?php echo $car['car_id']; ?>" class="bg-blue-600 hover:bg-blue-700 text-white px-3 py-1 rounded">View Details</a>
-              <form method="post">
-                <input type="hidden" name="car_id" value="<?php echo $car['car_id']; ?>">
-                <input type="hidden" name="action" value="list_back">
-                <button type="submit" class="bg-green-600 hover:bg-green-700 text-white px-3 py-1 rounded">List back</button>
-              </form>
+              <div class="flex gap-2">
+                <?php if (isset($car['listing_status']) && $car['listing_status'] === 'negotiating'): ?>
+                  <form method="post" onsubmit="return confirm('Mark this car as SOLD? This will keep it unlisted.');">
+                    <input type="hidden" name="car_id" value="<?php echo $car['car_id']; ?>">
+                    <input type="hidden" name="action" value="unlist_set">
+                    <input type="hidden" name="status" value="sold">
+                    <button type="submit" class="bg-red-600 hover:bg-red-700 text-white px-3 py-1 rounded">Mark Sold</button>
+                  </form>
+                <?php endif; ?>
+                <form method="post">
+                  <input type="hidden" name="car_id" value="<?php echo $car['car_id']; ?>">
+                  <input type="hidden" name="action" value="list_back">
+                  <button type="submit" class="bg-green-600 hover:bg-green-700 text-white px-3 py-1 rounded">List back</button>
+                </form>
+              </div>
             </div>
           </div>
         <?php endforeach; ?>

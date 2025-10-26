@@ -48,6 +48,67 @@ if (!$car_details) {
     $details->close();
 }
 
+// ===== Booking feature for seller notifications =====
+// Ensure bookings table exists (idempotent)
+$mysqli->query("CREATE TABLE IF NOT EXISTS bookings (
+  booking_id INT AUTO_INCREMENT PRIMARY KEY,
+  car_id INT NOT NULL,
+  buyer_id INT NOT NULL,
+  seller_id INT NOT NULL,
+  status ENUM('pending','accepted','rejected','cancelled') NOT NULL DEFAULT 'pending',
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  decision_at TIMESTAMP NULL DEFAULT NULL,
+  INDEX idx_booking_car_status (car_id, status),
+  CONSTRAINT fk_b_car FOREIGN KEY (car_id) REFERENCES cars(car_id) ON DELETE CASCADE,
+  CONSTRAINT fk_b_buyer FOREIGN KEY (buyer_id) REFERENCES buyers(id) ON DELETE CASCADE,
+  CONSTRAINT fk_b_seller FOREIGN KEY (seller_id) REFERENCES sellers(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+
+// Identify logged-in seller
+$seller_id = isset($_SESSION['user_id']) ? intval($_SESSION['user_id']) : 0;
+$ownsCar = ($seller_id > 0 && isset($car['seller_id']) && intval($car['seller_id']) === $seller_id);
+
+// Handle accept/reject from this page (seller only)
+if ($ownsCar && $_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['booking_action'], $_POST['booking_id'])) {
+  $action = $_POST['booking_action'];
+  $booking_id = intval($_POST['booking_id']);
+  if ($action === 'accept') {
+    $mysqli->begin_transaction();
+    if ($st = $mysqli->prepare("UPDATE bookings SET status='accepted', decision_at=NOW() WHERE booking_id=? AND seller_id=? AND status='pending'")) {
+      $st->bind_param('ii', $booking_id, $seller_id);
+      $st->execute();
+      $st->close();
+    }
+    if ($st2 = $mysqli->prepare("UPDATE cars SET listing_status='negotiating' WHERE car_id=? AND seller_id=?")) {
+      $st2->bind_param('ii', $car_id, $seller_id);
+      $st2->execute();
+      $st2->close();
+    }
+    $mysqli->commit();
+  } elseif ($action === 'reject') {
+    if ($st = $mysqli->prepare("UPDATE bookings SET status='rejected', decision_at=NOW() WHERE booking_id=? AND seller_id=? AND status='pending'")) {
+      $st->bind_param('ii', $booking_id, $seller_id);
+      $st->execute();
+      $st->close();
+    }
+  }
+  header("Location: car_details.php?car_id=".$car_id);
+  exit();
+}
+
+// Load pending bookings list for this car (show multiple buyers)
+$pendingBookings = [];
+if ($ownsCar) {
+  $q = $mysqli->prepare("SELECT b.booking_id, b.buyer_id, b.created_at, u.name, u.email, u.phone
+               FROM bookings b JOIN buyers u ON u.id=b.buyer_id
+               WHERE b.car_id=? AND b.status='pending' ORDER BY b.created_at ASC");
+  $q->bind_param('i', $car_id);
+  $q->execute();
+  $res = $q->get_result();
+  while ($row = $res->fetch_assoc()) { $pendingBookings[] = $row; }
+  $q->close();
+}
+
 // handle car_details update
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update_details'])) {
     $color = $mysqli->real_escape_string($_POST['color']);
@@ -136,6 +197,39 @@ function changeMain(src){
       <div>
         <h2 class="text-2xl font-bold mb-2"><?php echo htmlspecialchars($car['make'].' '.$car['model']); ?></h2>
         <div class="text-red-600 text-xl font-bold mb-4">RM<?php echo number_format($car['price'],2); ?></div>
+        <?php if ($ownsCar): ?>
+        <!-- Booking requests box -->
+        <div class="bg-white border border-yellow-300 rounded-lg p-4 mb-4">
+          <h3 class="text-lg font-semibold text-yellow-700 mb-2">Booking Requests</h3>
+          <?php if (!empty($pendingBookings)): ?>
+            <div class="space-y-3">
+              <?php foreach($pendingBookings as $bk): ?>
+                <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-2 p-3 bg-yellow-50 rounded">
+                  <div class="text-sm">
+                    <div class="font-semibold">Buyer: <?php echo htmlspecialchars($bk['name']); ?></div>
+                    <div class="text-gray-700">Email: <?php echo htmlspecialchars($bk['email'] ?? ''); ?><?php if(!empty($bk['phone'])): ?> • Phone: <?php echo htmlspecialchars($bk['phone']); ?><?php endif; ?></div>
+                    <div class="text-gray-500 text-xs">Requested: <?php echo htmlspecialchars($bk['created_at']); ?></div>
+                  </div>
+                  <div class="flex gap-2">
+                    <form method="post">
+                      <input type="hidden" name="booking_action" value="accept">
+                      <input type="hidden" name="booking_id" value="<?php echo (int)$bk['booking_id']; ?>">
+                      <button type="submit" class="bg-green-600 hover:bg-green-700 text-white px-3 py-1 rounded">Accept</button>
+                    </form>
+                    <form method="post">
+                      <input type="hidden" name="booking_action" value="reject">
+                      <input type="hidden" name="booking_id" value="<?php echo (int)$bk['booking_id']; ?>">
+                      <button type="submit" class="bg-gray-600 hover:bg-gray-700 text-white px-3 py-1 rounded">Reject</button>
+                    </form>
+                  </div>
+                </div>
+              <?php endforeach; ?>
+            </div>
+          <?php else: ?>
+            <div class="text-sm text-gray-600">No pending bookings.</div>
+          <?php endif; ?>
+        </div>
+        <?php endif; ?>
         <div class="bg-gray-50 rounded-lg shadow p-4 mb-4">
           <h3 class="text-lg font-semibold mb-2 text-red-600">Overview</h3>
           <div class="grid grid-cols-2 gap-x-6 gap-y-2">

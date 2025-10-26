@@ -45,7 +45,7 @@ if (!empty($seller['phone'])) {
       // If number starts with 0 and no country code, assume Malaysia (60). Adjust if needed.
       $digits = '60' . ltrim($digits, '0');
     }
-    $waText = rawurlencode("Hi, I'm interested in your {$car['make']} {$car['model']} (Car ID {$car_id}).");
+    $waText = rawurlencode("Hi, I'm interested in your {$car['make']} {$car['model']}.");
     $waPhoneLink = "https://wa.me/{$digits}?text={$waText}";
   }
 }
@@ -63,6 +63,121 @@ $details->bind_param("i", $car_id);
 $details->execute();
 $car_details = $details->get_result()->fetch_assoc();
 $details->close();
+
+// ===== Booking feature =====
+// Ensure bookings table exists (idempotent)
+$mysqli->query("CREATE TABLE IF NOT EXISTS bookings (
+  booking_id INT AUTO_INCREMENT PRIMARY KEY,
+  car_id INT NOT NULL,
+  buyer_id INT NOT NULL,
+  seller_id INT NOT NULL,
+  status ENUM('pending','accepted','rejected','cancelled') NOT NULL DEFAULT 'pending',
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  decision_at TIMESTAMP NULL DEFAULT NULL,
+  INDEX idx_booking_car_status (car_id, status),
+  CONSTRAINT fk_b_car FOREIGN KEY (car_id) REFERENCES cars(car_id) ON DELETE CASCADE,
+  CONSTRAINT fk_b_buyer FOREIGN KEY (buyer_id) REFERENCES buyers(id) ON DELETE CASCADE,
+  CONSTRAINT fk_b_seller FOREIGN KEY (seller_id) REFERENCES sellers(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+
+// Handle buyer booking request
+$bookingMsg = '';
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['book_car']) && !empty($_SESSION['user_id']) && !empty($_SESSION['role']) && $_SESSION['role']==='buyer') {
+  $buyerId = intval($_SESSION['user_id']);
+  // Allow booking only for open listings
+  $isOpen = (!isset($car['listing_status']) || $car['listing_status']===null || $car['listing_status']==='open');
+  if ($isOpen) {
+    // Check if an active booking exists in context of current car status
+    // Active means: pending while car is open, or accepted while car is negotiating
+    $sqlActive = "SELECT b.booking_id FROM bookings b JOIN cars c ON c.car_id=b.car_id
+                  WHERE b.car_id=? AND (
+                    (b.status='pending' AND (c.listing_status IS NULL OR c.listing_status='open')) OR
+                    (b.status='accepted' AND c.listing_status='negotiating')
+                  ) LIMIT 1";
+    if ($chk = $mysqli->prepare($sqlActive)) {
+      $chk->bind_param('i', $car_id);
+      $chk->execute();
+      $exists = $chk->get_result()->fetch_assoc();
+      $chk->close();
+      if ($exists) {
+        $bookingMsg = 'This car already has an active booking.';
+      } else {
+        if ($ins = $mysqli->prepare("INSERT INTO bookings (car_id, buyer_id, seller_id, status) VALUES (?,?,?, 'pending')")) {
+          $sellerIdForCar = intval($car['seller_id'] ?? 0);
+          $ins->bind_param('iii', $car_id, $buyerId, $sellerIdForCar);
+          if ($ins->execute()) {
+            $bookingMsg = 'Booking request sent to the seller.';
+          } else {
+            $bookingMsg = 'Failed to create booking.';
+          }
+          $ins->close();
+        }
+      }
+    }
+  } else {
+    $bookingMsg = 'This listing is not open for booking.';
+  }
+}
+
+// Compute current buyer's booking status for this car (if any)
+$myBooking = null;
+$hasActiveBooking = false;
+if (!empty($_SESSION['user_id']) && !empty($_SESSION['role']) && $_SESSION['role']==='buyer') {
+  $buyerId = intval($_SESSION['user_id']);
+  if ($st = $mysqli->prepare("SELECT booking_id, status, created_at, decision_at FROM bookings WHERE car_id=? AND buyer_id=? ORDER BY booking_id DESC LIMIT 1")) {
+    $st->bind_param('ii', $car_id, $buyerId);
+    $st->execute();
+    $myBooking = $st->get_result()->fetch_assoc();
+    $st->close();
+  }
+}
+// Check if any active booking exists (context-aware)
+$sqlHas = "SELECT 1 FROM bookings b JOIN cars c ON c.car_id=b.car_id
+           WHERE b.car_id=? AND (
+             (b.status='pending' AND (c.listing_status IS NULL OR c.listing_status='open')) OR
+             (b.status='accepted' AND c.listing_status='negotiating')
+           ) LIMIT 1";
+if ($st = $mysqli->prepare($sqlHas)) {
+  $st->bind_param('i', $car_id);
+  $st->execute();
+  $st->store_result();
+  $hasActiveBooking = $st->num_rows > 0;
+  $st->close();
+}
+
+// Determine if the current user's last booking is active under current car status
+$listingStatus = $car['listing_status'] ?? null;
+$isOpen = (!isset($listingStatus) || $listingStatus===null || $listingStatus==='open');
+$myBookingActive = false;
+if ($myBooking) {
+  if ($myBooking['status'] === 'pending' && $isOpen) {
+    $myBookingActive = true;
+  } elseif ($myBooking['status'] === 'accepted' && $listingStatus === 'negotiating') {
+    $myBookingActive = true;
+  }
+}
+
+// Allow buyer to cancel their pending booking
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['cancel_booking']) && !empty($_SESSION['user_id']) && !empty($_SESSION['role']) && $_SESSION['role']==='buyer') {
+  $buyerId = intval($_SESSION['user_id']);
+  $bookingId = isset($_POST['booking_id']) ? intval($_POST['booking_id']) : 0;
+  if ($bookingId > 0) {
+    if ($st = $mysqli->prepare("UPDATE bookings SET status='cancelled', decision_at=NOW() WHERE booking_id=? AND buyer_id=? AND status='pending'")) {
+      $st->bind_param('ii', $bookingId, $buyerId);
+      if ($st->execute()) {
+        $bookingMsg = 'Booking cancelled.';
+      }
+      $st->close();
+    }
+  }
+  // refresh myBooking after cancellation
+  if ($st = $mysqli->prepare("SELECT booking_id, status, created_at, decision_at FROM bookings WHERE car_id=? AND buyer_id=? ORDER BY booking_id DESC LIMIT 1")) {
+    $st->bind_param('ii', $car_id, $buyerId);
+    $st->execute();
+    $myBooking = $st->get_result()->fetch_assoc();
+    $st->close();
+  }
+}
 ?>
 <!doctype html>
 <html lang="en">
@@ -93,6 +208,7 @@ function changeMain(src){
         <li><a href="car_view.php" class="hover:underline">Listings</a></li>
         <li><a href="#" class="hover:underline">About</a></li>
         <?php if (!empty($_SESSION['role']) && $_SESSION['role']==='buyer'): ?>
+          <li><a href="buyer_bookings.php" class="hover:underline">Bookings</a></li>
           <li><a href="buyer_profile.php" class="hover:underline">Profile</a></li>
         <?php endif; ?>
         <li><a href="logout.php" class="hover:underline">Logout</a></li>
@@ -185,11 +301,41 @@ function changeMain(src){
               <div><span class="font-semibold">Email:</span> <a class="text-blue-600 hover:underline" href="mailto:<?php echo htmlspecialchars($seller['email']); ?>"><?php echo htmlspecialchars($seller['email']); ?></a></div>
             <?php endif; ?>
           </div>
-          <?php if (!empty($waPhoneLink)): ?>
-            <div class="mt-3">
-              <a href="<?php echo htmlspecialchars($waPhoneLink); ?>" target="_blank" rel="noopener" class="inline-flex items-center gap-2 bg-green-500 hover:bg-green-600 text-white px-4 py-2 rounded-lg font-semibold">
-                <span>WhatsApp</span>
-              </a>
+          <?php if (!empty($waPhoneLink) || (!empty($_SESSION['role']) && $_SESSION['role']==='buyer')): ?>
+            <div class="mt-3 flex gap-3 flex-wrap">
+              <?php if (!empty($waPhoneLink)): ?>
+                <a href="<?php echo htmlspecialchars($waPhoneLink); ?>" target="_blank" rel="noopener" class="inline-flex items-center gap-2 bg-green-500 hover:bg-green-600 text-white px-4 py-2 rounded-lg font-semibold">
+                  <span>WhatsApp</span>
+                </a>
+              <?php endif; ?>
+              <?php
+                // Booking controls for buyers (context-aware)
+                $isOpen = (!isset($car['listing_status']) || $car['listing_status']===null || $car['listing_status']==='open');
+                if (!empty($_SESSION['role']) && $_SESSION['role']==='buyer'):
+              ?>
+                <?php if (!empty($bookingMsg)): ?>
+                  <div class="text-sm text-gray-700 bg-gray-100 px-3 py-2 rounded"><?php echo htmlspecialchars($bookingMsg); ?></div>
+                <?php endif; ?>
+                <?php if ($myBookingActive): ?>
+                  <?php if ($myBooking['status']==='pending'): ?>
+                    <div class="inline-flex items-center gap-2 bg-yellow-500 text-white px-4 py-2 rounded-lg font-semibold">Booking Pending</div>
+                    <form method="post" class="inline">
+                      <input type="hidden" name="cancel_booking" value="1">
+                      <input type="hidden" name="booking_id" value="<?php echo (int)$myBooking['booking_id']; ?>">
+                      <button type="submit" class="inline-flex items-center gap-2 bg-gray-600 hover:bg-gray-700 text-white px-4 py-2 rounded-lg font-semibold">Cancel</button>
+                    </form>
+                  <?php else: ?>
+                    <div class="inline-flex items-center gap-2 bg-blue-600 text-white px-4 py-2 rounded-lg font-semibold">Booking Accepted</div>
+                  <?php endif; ?>
+                <?php elseif ($isOpen && !$hasActiveBooking): ?>
+                  <form method="post" class="inline">
+                    <input type="hidden" name="book_car" value="1">
+                    <button type="submit" class="inline-flex items-center gap-2 bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-lg font-semibold">Booking</button>
+                  </form>
+                <?php else: ?>
+                  <div class="inline-flex items-center gap-2 bg-gray-300 text-gray-700 px-4 py-2 rounded-lg font-semibold">Booking Unavailable</div>
+                <?php endif; ?>
+              <?php endif; ?>
             </div>
           <?php endif; ?>
         </div>

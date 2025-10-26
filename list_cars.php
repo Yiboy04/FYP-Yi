@@ -44,15 +44,7 @@ $variantOptions = [];
   if ($varRes) { while($row=$varRes->fetch_assoc()) { $variantOptions[] = $row['variant']; } }
 }
 
-// Engine capacities from cars, ordered numerically
-$engineCapOptions = [];
-{
-  $where = $baseScope;
-  $where[] = "engine_capacity IS NOT NULL AND engine_capacity<>''";
-  $sqlOpt = "SELECT DISTINCT engine_capacity AS ec FROM cars" . (count($where) ? (" WHERE " . implode(' AND ', $where)) : "") . " ORDER BY (engine_capacity+0) ASC";
-  $ecRes = $mysqli->query($sqlOpt);
-  if ($ecRes) { while($row=$ecRes->fetch_assoc()) { $engineCapOptions[] = $row['ec']; } }
-}
+// Engine capacity will be filtered via numeric range inputs (0.5L–8.0L)
 
 // Colours from car_details joined to cars (so scope applies)
 $colorOptions = [];
@@ -150,6 +142,7 @@ if (count($carIds) > 0) {
         <li><a href="car_view.php" class="hover:underline">Listings</a></li>
         <li><a href="#" class="hover:underline">About</a></li>
         <?php if (!empty($_SESSION['role']) && $_SESSION['role']==='buyer'): ?>
+          <li><a href="buyer_bookings.php" class="hover:underline">Bookings</a></li>
           <li><a href="buyer_profile.php" class="hover:underline">Profile</a></li>
         <?php endif; ?>
         <li><a href="logout.php" class="hover:underline">Logout</a></li>
@@ -205,7 +198,7 @@ if (count($carIds) > 0) {
       <div class="mb-4">
         <label class="block mb-1">Transmission</label>
         <select name="transmission" class="w-full p-2 border rounded">
-          <?php $transOptions = ['', 'AT','Manual','CVT','DCT']; ?>
+          <?php $transOptions = ['', 'AT','Manual','CVT','DCT','DHT']; ?>
           <?php foreach($transOptions as $opt): ?>
             <option value="<?php echo $opt; ?>" <?php echo ($transmissionFilter===$opt?'selected':''); ?>><?php echo $opt===''?'All':htmlspecialchars($opt); ?></option>
           <?php endforeach; ?>
@@ -222,12 +215,12 @@ if (count($carIds) > 0) {
       </div>
       <div class="mb-4">
         <label class="block mb-1">Engine Capacity (L)</label>
-        <select name="engine_capacity" class="w-full p-2 border rounded">
-          <option value="">All Capacities</option>
-          <?php foreach($engineCapOptions as $opt): ?>
-            <option value="<?php echo htmlspecialchars($opt); ?>" <?php echo ($engine_capacity===$opt ? 'selected' : ''); ?>><?php echo htmlspecialchars($opt); ?></option>
-          <?php endforeach; ?>
-        </select>
+        <div class="flex items-center gap-2">
+          <input type="number" name="engine_capacity_min" class="w-1/2 p-2 border rounded" min="0.5" max="8.0" step="0.1" placeholder="Min (0.5)" value="<?php echo $engine_capacity_min !== null ? htmlspecialchars((string)$engine_capacity_min) : ''; ?>">
+          <span class="text-gray-500">-</span>
+          <input type="number" name="engine_capacity_max" class="w-1/2 p-2 border rounded" min="0.5" max="8.0" step="0.1" placeholder="Max (8.0)" value="<?php echo $engine_capacity_max !== null ? htmlspecialchars((string)$engine_capacity_max) : ''; ?>">
+        </div>
+        <p class="mt-1 text-xs text-gray-500">Enter a range between 0.5L and 8.0L. Leave blank for no limit.</p>
       </div>
       <div class="mb-4">
         <label class="block mb-1">Colour</label>

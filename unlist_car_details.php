@@ -1,5 +1,5 @@
 <?php
-// unlist_car_details.php - View-only details for unlisted car (sold/considering) owned by the seller
+// unlist_car_details.php - View-only details for unlisted car (sold/considering/negotiating) owned by the seller
 session_start();
 if (!isset($_SESSION['user_id'])) {
     header('Location: login.php');
@@ -14,7 +14,7 @@ $car_id = intval($_GET['car_id']);
 $seller_id = intval($_SESSION['user_id']);
 
 // Fetch car and ensure it belongs to this seller and is not open
-$stmt = $mysqli->prepare("SELECT * FROM cars WHERE car_id=? AND seller_id=? AND (listing_status IN ('sold','considering') OR listing_status IS NULL AND 1=0)");
+$stmt = $mysqli->prepare("SELECT * FROM cars WHERE car_id=? AND seller_id=? AND (listing_status IN ('sold','considering','negotiating') OR listing_status IS NULL AND 1=0)");
 $stmt->bind_param('ii', $car_id, $seller_id);
 $stmt->execute();
 $car = $stmt->get_result()->fetch_assoc();

@@ -40,6 +40,22 @@ if (file_exists($makesModelsPath)) {
 }
 $transmissions = ['AT','Manual','CVT','DCT','DHT'];
 
+// ===== Ensure bookings table exists (for booking workflow) =====
+$mysqli->query("CREATE TABLE IF NOT EXISTS bookings (
+  booking_id INT AUTO_INCREMENT PRIMARY KEY,
+  car_id INT NOT NULL,
+  buyer_id INT NOT NULL,
+  seller_id INT NOT NULL,
+  status ENUM('pending','accepted','rejected','cancelled') NOT NULL DEFAULT 'pending',
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  decision_at TIMESTAMP NULL DEFAULT NULL,
+  INDEX idx_booking_seller_status (seller_id, status),
+  INDEX idx_booking_car_status (car_id, status),
+  CONSTRAINT fk_b_car FOREIGN KEY (car_id) REFERENCES cars(car_id) ON DELETE CASCADE,
+  CONSTRAINT fk_b_buyer FOREIGN KEY (buyer_id) REFERENCES buyers(id) ON DELETE CASCADE,
+  CONSTRAINT fk_b_seller FOREIGN KEY (seller_id) REFERENCES sellers(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+
 // ===== Filters (GET) and sorting =====
 // Read filter params
 $f_q            = isset($_GET['q']) ? trim($_GET['q']) : '';
@@ -195,6 +211,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['edit_car'])) {
   header("Location: seller_main.php");
   exit();
 }
+
 
 // ===== Fetch cars with filters/sort =====
 // Remove color from SELECT and variable list
@@ -399,7 +416,7 @@ function updateModelOptionsFilter(makeSelect, modelSelectId, selectedModel='') {
         <h2 class="text-lg font-bold mt-2"><?php echo htmlspecialchars($row['make']." ".$row['model']); ?></h2>
         <p class="text-sm text-gray-600"><?php echo $row['year']." | ".$row['engine_capacity']." | ".$row['mileage']." km"; ?></p>
         <p class="text-red-600 font-bold">RM <?php echo number_format($row['price'],2); ?></p>
-        <div class="flex gap-2 mt-2">
+        <div class="flex gap-2 mt-2 flex-wrap">
           <a href="car_details.php?car_id=<?php echo $row['car_id']; ?>" class="bg-blue-500 text-white px-2 py-1 rounded">View</a>
           <button onclick="toggleModal('editModal<?php echo $row['car_id']; ?>')" class="bg-yellow-500 text-white px-2 py-1 rounded">Edit</button>
           <a href="seller_main.php?delete=<?php echo $row['car_id']; ?>" onclick="return confirm('Delete this car?')" class="bg-red-500 text-white px-2 py-1 rounded">Delete</a>
@@ -409,7 +426,7 @@ function updateModelOptionsFilter(makeSelect, modelSelectId, selectedModel='') {
 
       <!-- Edit Modal -->
       <div id="editModal<?php echo $row['car_id']; ?>" class="fixed inset-0 bg-black bg-opacity-50 flex justify-center items-center hidden">
-        <div class="bg-white rounded-xl shadow-lg p-6 w-full max-w-lg">
+        <div class="bg-white rounded-xl shadow-lg p-6 w-full max-w-md max-h-screen overflow-y-auto">
           <h2 class="text-xl font-bold mb-4">Edit Car</h2>
           <form method="post" class="grid grid-cols-1 gap-4">
             <input type="text" name="variant" value="<?php echo isset($row['variant']) ? htmlspecialchars($row['variant']) : ''; ?>" placeholder="Type variant (e.g. 320i, 2.0)" class="border p-2 rounded">
@@ -502,7 +519,7 @@ function updateModelOptionsFilter(makeSelect, modelSelectId, selectedModel='') {
 
 <!-- Add Car Modal -->
 <div id="addCarModal" class="fixed inset-0 bg-black bg-opacity-50 flex justify-center items-center hidden">
-  <div class="bg-white rounded-xl shadow-lg p-6 w-full max-w-lg">
+  <div class="bg-white rounded-xl shadow-lg p-6 w-full max-w-md max-h-screen overflow-y-auto">
     <h2 class="text-xl font-bold mb-4">Add a New Car</h2>
     <form method="post" enctype="multipart/form-data" class="grid grid-cols-1 gap-4">
   <input type="text" name="variant" placeholder="Type variant (e.g. 320i, 2.0)" class="border p-2 rounded">

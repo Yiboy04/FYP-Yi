@@ -85,6 +85,7 @@ $interiorImages = getImages('interior');
           <li><a href="car_view.php" class="underline font-semibold">Listings</a></li>
           <li><a href="#" class="hover:underline">About</a></li>
           <?php if (!empty($_SESSION['role']) && $_SESSION['role']==='buyer'): ?>
+            <li><a href="buyer_bookings.php" class="hover:underline">Bookings</a></li>
             <li><a href="buyer_profile.php" class="hover:underline">Profile</a></li>
           <?php endif; ?>
           <li><a href="logout.php" class="hover:underline">Logout</a></li>
