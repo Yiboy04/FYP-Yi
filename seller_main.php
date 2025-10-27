@@ -139,7 +139,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['add_car'])) {
    $seller_id, $make, $model, $variant, $year, $engine_capacity, $mileage, $transmission, $price, $fuel, $drive_system, $doors);
     if ($stmt->execute()) {
         $car_id = $stmt->insert_id;
-        // handle multiple image upload
+        // handle multiple image upload (simple move)
         if (!empty($_FILES['car_images']['name'][0])) {
             $uploadDir = __DIR__ . '/uploads/';
             if (!is_dir($uploadDir)) mkdir($uploadDir, 0777, true);
@@ -347,7 +347,7 @@ function updateModelOptionsFilter(makeSelect, modelSelectId, selectedModel='') {
   </div>
 
   <!-- Filter Modal -->
-  <div id="filterModal" class="fixed inset-0 bg-black bg-opacity-50 flex justify-center items-center hidden">
+  <div id="filterModal" class="fixed inset-0 bg-black bg-opacity-50 flex justify-center items-center hidden z-50">
     <div class="bg-white rounded-xl shadow-lg p-6 w-full max-w-4xl">
       <div class="flex items-center justify-between mb-4">
         <h2 class="text-xl font-bold">Filter & Sort</h2>
@@ -448,7 +448,7 @@ function updateModelOptionsFilter(makeSelect, modelSelectId, selectedModel='') {
       </div>
 
       <!-- Edit Modal -->
-      <div id="editModal<?php echo $row['car_id']; ?>" class="fixed inset-0 bg-black bg-opacity-50 flex justify-center items-center hidden">
+  <div id="editModal<?php echo $row['car_id']; ?>" class="fixed inset-0 bg-black bg-opacity-50 flex justify-center items-center hidden z-50">
         <div class="bg-white rounded-xl shadow-lg p-6 w-full max-w-md max-h-screen overflow-y-auto">
           <h2 class="text-xl font-bold mb-4">Edit Car</h2>
           <form method="post" class="grid grid-cols-1 gap-4">
@@ -541,7 +541,7 @@ function updateModelOptionsFilter(makeSelect, modelSelectId, selectedModel='') {
 </div>
 
 <!-- Add Car Modal -->
-<div id="addCarModal" class="fixed inset-0 bg-black bg-opacity-50 flex justify-center items-center hidden">
+<div id="addCarModal" class="fixed inset-0 bg-black bg-opacity-50 flex justify-center items-center hidden z-50">
   <div class="bg-white rounded-xl shadow-lg p-6 w-full max-w-md max-h-screen overflow-y-auto">
     <h2 class="text-xl font-bold mb-4">Add a New Car</h2>
     <form method="post" enctype="multipart/form-data" class="grid grid-cols-1 gap-4">
@@ -597,7 +597,7 @@ function updateModelOptionsFilter(makeSelect, modelSelectId, selectedModel='') {
       </select>
 
       <input type="number" step="0.01" name="price" placeholder="Price" required class="border p-2 rounded">
-      <input type="file" name="car_images[]" multiple class="border p-2 rounded">
+    <input type="file" name="car_images[]" multiple class="border p-2 rounded">
       <div class="flex justify-end gap-2">
         <button type="button" onclick="toggleModal('addCarModal')" class="bg-gray-400 text-white px-4 py-2 rounded">Cancel</button>
         <button type="submit" class="bg-red-600 text-white px-4 py-2 rounded hover:bg-red-700">Add Car</button>

@@ -179,7 +179,7 @@ if (!empty($_SESSION['recently_viewed']) && is_array($_SESSION['recently_viewed'
       <nav>
         <ul class="flex gap-6 items-center">
           <li><a href="main.php" class="hover:underline">Home</a></li>
-          <li><a href="car_view.php" class="hover:underline">Listings</a></li>
+          <li><a href="list_cars.php" class="hover:underline">Listings</a></li>
           <li><a href="buyer_profile.php" class="underline font-semibold">Profile</a></li>
           <!-- Fold-down menu -->
           <li class="relative" id="moreMenu">

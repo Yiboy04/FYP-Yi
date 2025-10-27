@@ -156,7 +156,7 @@ foreach ($labels as $mk) {
       <nav>
         <ul class="flex gap-6 items-center">
           <li><a href="main.php" class="hover:underline">Home</a></li>
-          <li><a href="car_view.php" class="hover:underline">Listings</a></li>
+          <li><a href="list_cars.php" class="hover:underline">Listings</a></li>
           <?php if (!empty($_SESSION['role']) && $_SESSION['role']==='buyer'): ?>
             <li><a href="buyer_profile.php" class="hover:underline">Profile</a></li>
           <?php endif; ?>

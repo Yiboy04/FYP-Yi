@@ -139,7 +139,7 @@ if (count($carIds) > 0) {
           </a>
         </li>
         <li><a href="main.php" class="hover:underline">Home</a></li>
-        <li><a href="car_view.php" class="hover:underline">Listings</a></li>
+        <li><a href="list_cars.php" class="hover:underline">Listings</a></li>
         <li><a href="#" class="hover:underline">About</a></li>
         <?php if (!empty($_SESSION['role']) && $_SESSION['role']==='buyer'): ?>
           <li><a href="buyer_bookings.php" class="hover:underline">Bookings</a></li>

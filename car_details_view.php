@@ -64,6 +64,17 @@ $details->execute();
 $car_details = $details->get_result()->fetch_assoc();
 $details->close();
 
+// Check if this car has a 3D (360) view set in the same DB
+$has360 = false;
+if ($chk = $mysqli->prepare("SELECT 1 FROM car_360_set WHERE car_id=? LIMIT 1")) {
+  $chk->bind_param('i', $car_id);
+  if ($chk->execute()) {
+    $chk->store_result();
+    $has360 = $chk->num_rows > 0;
+  }
+  $chk->close();
+}
+
 // ===== Booking feature =====
 // Ensure bookings table exists (idempotent)
 $mysqli->query("CREATE TABLE IF NOT EXISTS bookings (
@@ -205,7 +216,7 @@ function changeMain(src){
           </a>
         </li>
         <li><a href="main.php" class="hover:underline">Home</a></li>
-        <li><a href="car_view.php" class="hover:underline">Listings</a></li>
+        <li><a href="list_cars.php" class="hover:underline">Listings</a></li>
         <li><a href="#" class="hover:underline">About</a></li>
         <?php if (!empty($_SESSION['role']) && $_SESSION['role']==='buyer'): ?>
           <li><a href="buyer_bookings.php" class="hover:underline">Bookings</a></li>
@@ -270,6 +281,18 @@ function changeMain(src){
             echo '</div>';
           }
           ?>
+          <!-- 3D View button (visible for all; half-transparent when not available) -->
+          <div class="mt-3">
+            <?php if ($has360): ?>
+              <a href="car_view.php?car_id=<?php echo (int)$car_id; ?>" class="inline-flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-lg font-semibold">
+                <span>3D View</span>
+              </a>
+            <?php else: ?>
+              <a href="#" aria-disabled="true" title="3D view not available" class="inline-flex items-center gap-2 bg-indigo-600 text-white px-4 py-2 rounded-lg font-semibold opacity-50 cursor-not-allowed pointer-events-none">
+                <span>3D View</span>
+              </a>
+            <?php endif; ?>
+          </div>
         </div>
       </div>
       <!-- Right: details -->

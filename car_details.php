@@ -192,6 +192,10 @@ function changeMain(src){
             <button type="submit" name="update_note" class="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700">Save Note</button>
           </div>
         </form>
+        <!-- 3D View manage button for seller -->
+        <div class="mt-3">
+          <a href="car_360_manage.php?car_id=<?php echo (int)$car_id; ?>" class="inline-flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-lg font-semibold">Manage 3D View</a>
+        </div>
       </div>
       <!-- Right: details -->
       <div>

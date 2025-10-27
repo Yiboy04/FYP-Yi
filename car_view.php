@@ -1,31 +1,109 @@
 <?php
 session_start();
-// helper function to get images from folder
+// helper function to get images from folder (fallback mode)
 function getImages($folder) {
-    $imageDir = __DIR__ . "/pictures/$folder";
-    if (!is_dir($imageDir)) return [];
+  $imageDir = __DIR__ . "/pictures/$folder";
+  if (!is_dir($imageDir)) return [];
 
-    $allFiles = scandir($imageDir);
-    $imageFiles = [];
-    foreach ($allFiles as $file) {
-        $filePath = $imageDir . "/" . $file;
-        if (is_file($filePath) && preg_match('/\.(jpg|jpeg|png|gif)$/i', $file)) {
-            $imageFiles[$file] = filemtime($filePath);
-        }
+  $allFiles = scandir($imageDir);
+  $imageFiles = [];
+  foreach ($allFiles as $file) {
+    $filePath = $imageDir . "/" . $file;
+    if (is_file($filePath) && preg_match('/\.(jpg|jpeg|png|gif)$/i', $file)) {
+      $imageFiles[$file] = filemtime($filePath);
     }
-    arsort($imageFiles); // newest first
-    return array_keys($imageFiles);
+  }
+  arsort($imageFiles); // newest first
+  // return as web paths for direct use in <img src="...">
+  return array_map(function($fname) use ($folder) {
+    return "pictures/$folder/" . $fname;
+  }, array_keys($imageFiles));
 }
 
-// get both sets
+// Default: filesystem-based lists (fallback)
 $exteriorImages = getImages('exterior');
 $interiorImages = getImages('interior');
+
+// If a car_id is provided, try to load 360 frames from the separate fyp_360 database
+$carId = isset($_GET['car_id']) ? (int)$_GET['car_id'] : 0;
+// Will hold a friendly display name like: "2020 Honda Civic 1.5 TC-P"
+$carDisplayName = '';
+if ($carId > 0) {
+  // Connect to the same 'fyp' database where 360 tables now live
+  $mysqli360 = @new mysqli("localhost", "root", "", "fyp");
+  if (!$mysqli360->connect_errno) {
+    // Load basic car details to build a display name
+    if ($carStmt = $mysqli360->prepare("SELECT * FROM cars WHERE car_id=? LIMIT 1")) {
+      $carStmt->bind_param('i', $carId);
+      if ($carStmt->execute()) {
+        $carRes = $carStmt->get_result();
+        if ($carRow = $carRes->fetch_assoc()) {
+          $make = trim((string)($carRow['make'] ?? ''));
+          $model = trim((string)($carRow['model'] ?? ''));
+          // Try a couple of common column names for variant and year
+          $variant = trim((string)($carRow['variant'] ?? ($carRow['trim'] ?? '')));
+          $year = trim((string)($carRow['year'] ?? ($carRow['manufacture_year'] ?? '')));
+          $parts = [];
+          if ($year !== '') $parts[] = $year;
+          if ($make !== '') $parts[] = $make;
+          if ($model !== '') $parts[] = $model;
+          if ($variant !== '') $parts[] = $variant;
+          $carDisplayName = trim(implode(' ', $parts));
+        }
+      }
+      $carStmt->close();
+    }
+    // Find set for this car (optional)
+    $stmt = $mysqli360->prepare("SELECT set_id FROM car_360_set WHERE car_id=? LIMIT 1");
+    if ($stmt) {
+      $stmt->bind_param('i', $carId);
+      if ($stmt->execute()) {
+        $stmt->bind_result($setId);
+        if ($stmt->fetch()) {
+          $stmt->close();
+          // Exterior
+          $exterior = [];
+          if ($q = $mysqli360->prepare("SELECT image_path FROM car_360_exterior_images WHERE set_id=? AND is_active=1 ORDER BY frame_index ASC")) {
+            $q->bind_param('i', $setId);
+            if ($q->execute()) {
+              $res = $q->get_result();
+              while ($row = $res->fetch_assoc()) { $exterior[] = $row['image_path']; }
+            }
+            $q->close();
+          }
+          // Interior
+          $interior = [];
+          if ($q2 = $mysqli360->prepare("SELECT image_path FROM car_360_interior_images WHERE set_id=? AND is_active=1 ORDER BY frame_index ASC")) {
+            $q2->bind_param('i', $setId);
+            if ($q2->execute()) {
+              $res2 = $q2->get_result();
+              while ($row = $res2->fetch_assoc()) { $interior[] = $row['image_path']; }
+            }
+            $q2->close();
+          }
+          // Override regardless (if none, show none) to reflect latest deletes accurately
+          $exteriorImages = $exterior;
+          $interiorImages = $interior;
+        } else {
+          $stmt->close();
+        }
+      } else {
+        $stmt->close();
+      }
+    }
+    $mysqli360->close();
+  }
+}
 ?>
 <!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>Car 360 View</title>
+  <title><?php
+    // Build a dynamic page title including car name if available
+    $pageCarName = isset($carDisplayName) ? trim($carDisplayName) : '';
+    echo 'Car 360 View' . ($pageCarName !== '' ? (' — ' . htmlspecialchars($pageCarName)) : '');
+  ?></title>
   <script src="https://cdn.tailwindcss.com"></script>
   <style>
     #car-container {
@@ -82,7 +160,7 @@ $interiorImages = getImages('interior');
       <nav>
         <ul class="flex gap-6">
           <li><a href="main.php" class="hover:underline">Home</a></li>
-          <li><a href="car_view.php" class="underline font-semibold">Listings</a></li>
+          <li><a href="list_cars.php" class="underline font-semibold">Listings</a></li>
           <li><a href="#" class="hover:underline">About</a></li>
           <?php if (!empty($_SESSION['role']) && $_SESSION['role']==='buyer'): ?>
             <li><a href="buyer_bookings.php" class="hover:underline">Bookings</a></li>
@@ -100,7 +178,9 @@ $interiorImages = getImages('interior');
   <!-- MAIN CONTENT -->
   <main class="container mx-auto py-10">
     <h2 class="text-3xl font-bold text-center mb-6 text-gray-800">360° Car View</h2>
-    <h2 class="text-3xl font-bold text-center mb-6 text-gray-800">1995 MK4 Toyota Supra 3.0</h2>
+    <?php if (!empty($carDisplayName)): ?>
+      <h2 class="text-2xl md:text-3xl font-bold text-center mb-6 text-gray-800"><?php echo htmlspecialchars($carDisplayName); ?></h2>
+    <?php endif; ?>
     <p class="text-center text-gray-600 mb-6">Click and drag or use <kbd class="bg-gray-200 px-2 py-1 rounded">←</kbd><kbd class="bg-gray-200 px-2 py-1 rounded">→</kbd> keys.</p>
 
     <!-- Toggle Buttons -->
@@ -119,13 +199,13 @@ $interiorImages = getImages('interior');
 
     <div id="car-container">
       <!-- Exterior images -->
-      <?php $first = true; foreach ($exteriorImages as $file): ?>
-        <img src="pictures/exterior/<?php echo $file; ?>" data-set="exterior" class="<?php echo $first ? 'active' : ''; ?>">
+      <?php $first = true; foreach ($exteriorImages as $src): ?>
+        <img src="<?php echo htmlspecialchars($src); ?>" data-set="exterior" class="<?php echo $first ? 'active' : ''; ?>">
         <?php $first = false; endforeach; ?>
 
       <!-- Interior images (hidden initially) -->
-      <?php foreach ($interiorImages as $file): ?>
-        <img src="pictures/interior/<?php echo $file; ?>" data-set="interior">
+      <?php foreach ($interiorImages as $src): ?>
+        <img src="<?php echo htmlspecialchars($src); ?>" data-set="interior">
       <?php endforeach; ?>
     </div>
   </main>
