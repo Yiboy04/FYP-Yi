@@ -18,6 +18,12 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
     $email = $_POST['email'];
     $pass = $_POST['password'];
 
+  // Admin shortcut: direct to admin login page
+  if ($email === 'zawarudo' && $pass === 'jojo') {
+    header("Location: admin_login.php");
+    exit();
+  }
+
     $redirect = ""; // store where to redirect
     $userFound = false;
 
@@ -115,7 +121,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
           <input type="password" id="password" name="password" required 
             class="w-full px-4 py-2 mt-1 border border-gray-300 rounded-md focus:ring-2 focus:ring-red-400 focus:outline-none">
         </div>
-        <button type="submit" 
+        <button id="loginBtn" type="submit" 
           class="w-full bg-red-600 text-white py-2 rounded-md font-semibold hover:bg-red-700 transition">
           Login
         </button>
@@ -134,4 +140,19 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
   </footer>
 
 </body>
+<script>
+// Allow the special admin keyword 'madeinheaven' to bypass email pattern blocking
+document.addEventListener('DOMContentLoaded', function(){
+  var btn = document.getElementById('loginBtn');
+  var email = document.getElementById('email');
+  if (!btn || !email) return;
+  btn.addEventListener('click', function(){
+    try {
+      if (email.value === 'zawarudo') {
+        email.setAttribute('type','text');
+      }
+    } catch(e) {}
+  });
+});
+</script>
 </html>

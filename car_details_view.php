@@ -64,6 +64,38 @@ $details->execute();
 $car_details = $details->get_result()->fetch_assoc();
 $details->close();
 
+// Ensure car_more_detail exists and fetch additional specs (view-only)
+$mysqli->query("CREATE TABLE IF NOT EXISTS car_more_detail (
+  car_id INT NOT NULL PRIMARY KEY,
+  speaker_brand VARCHAR(255) NULL,
+  speaker_quantity INT NULL,
+  length_mm INT NULL,
+  height_mm INT NULL,
+  width_mm INT NULL,
+  wheel_base_mm INT NULL,
+  turning_circle VARCHAR(50) NULL,
+  fuel_consumption DECIMAL(5,2) NULL,
+  front_suspension VARCHAR(255) NULL,
+  rear_suspension VARCHAR(255) NULL,
+  driver_assistance TEXT NULL,
+  zero_to_hundred_s DECIMAL(5,2) NULL,
+  top_speed_kmh INT NULL,
+  heated_seat TINYINT(1) NULL,
+  cooling_seat TINYINT(1) NULL,
+  other_features TEXT NULL,
+  updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  CONSTRAINT fk_cmd_car FOREIGN KEY (car_id) REFERENCES cars(car_id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+$mysqli->query("ALTER TABLE car_more_detail ADD COLUMN IF NOT EXISTS zero_to_hundred_s DECIMAL(5,2) NULL AFTER driver_assistance");
+$mysqli->query("ALTER TABLE car_more_detail ADD COLUMN IF NOT EXISTS top_speed_kmh INT NULL AFTER zero_to_hundred_s");
+$mysqli->query("ALTER TABLE car_more_detail ADD COLUMN IF NOT EXISTS other_features TEXT NULL AFTER cooling_seat");
+
+$moreStmt = $mysqli->prepare("SELECT speaker_brand, speaker_quantity, length_mm, height_mm, width_mm, wheel_base_mm, turning_circle, fuel_consumption, front_suspension, rear_suspension, driver_assistance, zero_to_hundred_s, top_speed_kmh, heated_seat, cooling_seat, other_features FROM car_more_detail WHERE car_id=?");
+$moreStmt->bind_param("i", $car_id);
+$moreStmt->execute();
+$car_more = $moreStmt->get_result()->fetch_assoc();
+$moreStmt->close();
+
 // Check if this car has a 3D (360) view set in the same DB
 $has360 = false;
 if ($chk = $mysqli->prepare("SELECT 1 FROM car_360_set WHERE car_id=? LIMIT 1")) {
@@ -187,6 +219,57 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['cancel_booking']) && 
     $st->execute();
     $myBooking = $st->get_result()->fetch_assoc();
     $st->close();
+  }
+}
+
+// ===== Reports feature =====
+// Ensure reports table exists (idempotent)
+$mysqli->query("CREATE TABLE IF NOT EXISTS reports (
+  report_id INT AUTO_INCREMENT PRIMARY KEY,
+  car_id INT NOT NULL,
+  reporter_id INT NULL,
+  reporter_role ENUM('buyer','seller','admin','guest') NULL,
+  reasons TEXT NULL,
+  details TEXT NULL,
+  status ENUM('new','reviewed','dismissed','resolved') NOT NULL DEFAULT 'new',
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  INDEX idx_reports_car (car_id),
+  CONSTRAINT fk_reports_car FOREIGN KEY (car_id) REFERENCES cars(car_id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+
+$reportMsg = '';
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['submit_report'])) {
+  // require login (buyer or seller)
+  if (empty($_SESSION['user_id']) || empty($_SESSION['role'])) {
+    $reportMsg = 'Please log in to report this listing.';
+  } else {
+    $reasons = isset($_POST['reasons']) && is_array($_POST['reasons']) ? $_POST['reasons'] : [];
+    $details = trim((string)($_POST['details'] ?? ''));
+    // sanitize reasons to simple safe tokens/words
+    $cleanReasons = [];
+    foreach ($reasons as $r) {
+      $r = preg_replace('/[^a-z0-9_\- ]/i', '', (string)$r);
+      $r = trim($r);
+      if ($r !== '') { $cleanReasons[] = $r; }
+    }
+    $reasonsStr = implode(', ', array_slice($cleanReasons, 0, 20));
+    if ($reasonsStr === '' && $details === '') {
+      $reportMsg = 'Please select at least one reason or provide details.';
+    } else {
+      $reporterId = intval($_SESSION['user_id']);
+      $reporterRole = in_array($_SESSION['role'], ['buyer','seller','admin','guest'], true) ? $_SESSION['role'] : 'guest';
+      if ($st = $mysqli->prepare("INSERT INTO reports (car_id, reporter_id, reporter_role, reasons, details) VALUES (?,?,?,?,?)")) {
+        $st->bind_param('iisss', $car_id, $reporterId, $reporterRole, $reasonsStr, $details);
+        if ($st->execute()) {
+          $reportMsg = 'Thanks for your report. Our team will review it shortly.';
+        } else {
+          $reportMsg = 'Failed to submit report.';
+        }
+        $st->close();
+      } else {
+        $reportMsg = 'Failed to prepare report submission.';
+      }
+    }
   }
 }
 ?>
@@ -394,7 +477,10 @@ function changeMain(src){
           </div>
         </div>
         <div class="bg-gray-50 rounded-lg shadow p-4 mb-4">
-          <h3 class="text-lg font-semibold mb-2 text-blue-600">Car Details</h3>
+          <div class="flex items-center justify-between mb-2">
+            <h3 class="text-lg font-semibold text-blue-600">Car Details</h3>
+            <button type="button" id="openMoreDetailsView" class="bg-white border border-blue-600 text-blue-600 px-3 py-1.5 rounded hover:bg-blue-50">More Details</button>
+          </div>
           <div class="grid grid-cols-2 gap-4">
             <div class="text-gray-700"><span class="font-semibold">Colour:</span> <?php echo htmlspecialchars($car_details['color'] ?? ''); ?></div>
             <div class="text-gray-700"><span class="font-semibold">Horsepower:</span> <?php echo htmlspecialchars($car_details['horsepower'] ?? ''); ?></div>
@@ -415,6 +501,209 @@ function changeMain(src){
     </div>
   </div>
 </main>
+<!-- Report section at the very bottom -->
+<div class="container mx-auto mt-6 mb-10">
+  <div class="bg-white rounded shadow p-4 flex items-center justify-between">
+    <div class="text-sm text-gray-600">See something wrong with this listing?</div>
+    <div class="flex items-center gap-3">
+      <?php if (!empty($reportMsg)): ?>
+        <div class="text-sm px-3 py-1.5 rounded <?php echo strpos($reportMsg,'Thanks')===0 ? 'bg-green-100 text-green-700' : 'bg-yellow-100 text-yellow-800'; ?>"><?php echo htmlspecialchars($reportMsg); ?></div>
+      <?php endif; ?>
+      <?php if (!empty($_SESSION['user_id']) && !empty($_SESSION['role'])): ?>
+        <button type="button" id="openReportModal" class="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-lg font-semibold">Report this listing</button>
+      <?php else: ?>
+        <a href="login.php" class="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-lg font-semibold">Log in to report</a>
+      <?php endif; ?>
+    </div>
+  </div>
+  <p class="text-xs text-gray-500 mt-2">Abuse of this feature may lead to account restrictions.</p>
+  </div>
+
+<!-- Read-only More Details Slide-over -->
+<div id="moreDetailsModalView" class="hidden fixed inset-0 z-50" aria-modal="true" role="dialog">
+  <div id="moreDetailsBackdropView" class="absolute inset-0 bg-black bg-opacity-50 opacity-0 transition-opacity duration-300"></div>
+  <div class="absolute inset-y-0 right-0 max-w-full flex">
+    <div id="moreDetailsPanelView" class="w-screen max-w-xl transform translate-x-full transition-transform duration-300 ease-out">
+      <div class="h-full flex flex-col bg-white shadow-xl">
+        <div class="flex items-center justify-between px-5 py-3 border-b">
+          <h3 class="text-xl font-semibold">More Details</h3>
+          <button id="closeMoreDetailsView" class="text-gray-500 hover:text-gray-700" aria-label="Close">✕</button>
+        </div>
+        <div class="p-5 space-y-6 overflow-y-auto" style="max-height: calc(100vh - 7rem);">
+          <h4 class="text-xl font-semibold">Car features and spec</h4>
+          <div>
+            <label for="featureSearchView" class="sr-only">Search features</label>
+            <div class="relative">
+              <svg class="w-5 h-5 absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-4.35-4.35M10.5 18a7.5 7.5 0 100-15 7.5 7.5 0 000 15z"/></svg>
+              <input id="featureSearchView" type="text" placeholder="Search for features and spec" class="w-full border rounded pl-10 pr-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500" />
+            </div>
+          </div>
+          <div>
+            <h5 class="text-lg font-semibold mb-2">All features</h5>
+            <?php
+              $fmtPriceV = isset($car['price']) ? 'RM'.number_format($car['price'], 2) : null;
+              $sec_basic_v = [
+                'Make / Model' => trim(($car['make'] ?? '').' '.($car['model'] ?? '')),
+                'Variant' => $car['variant'] ?? null,
+                'Year' => $car['year'] ?? null,
+                'Price' => $fmtPriceV,
+                'Mileage' => isset($car['mileage']) ? $car['mileage'].' km' : null,
+                'Transmission' => $car['transmission'] ?? null,
+                'Engine Capacity' => isset($car['engine_capacity']) ? $car['engine_capacity'].' L' : null,
+                'Fuel' => $car['fuel'] ?? null,
+                'Drive System' => $car['drive_system'] ?? null,
+                'Doors' => isset($car['doors']) ? $car['doors'].'D' : null,
+                'Condition' => $car_details['car_condition'] ?? null,
+                'Type' => $car_details['car_type'] ?? null,
+              ];
+              $sec_perf_v = [
+                'Horsepower' => $car_details['horsepower'] ?? null,
+                'Torque' => $car_details['torque'] ?? null,
+                '0-100 km/h (s)' => $car_more['zero_to_hundred_s'] ?? null,
+                'Top Speed (km/h)' => $car_more['top_speed_kmh'] ?? null,
+                'Engine Code' => $car_details['engine_code'] ?? null,
+                'Gear Numbers' => $car_details['gear_numbers'] ?? null,
+                'Transmission' => $car['transmission'] ?? null,
+                'Engine Capacity' => isset($car['engine_capacity']) ? $car['engine_capacity'].' L' : null,
+              ];
+              $sec_wheels_v = [
+                'Front Wheel Size' => $car_details['front_wheel_size'] ?? null,
+                'Rear Wheel Size' => $car_details['rear_wheel_size'] ?? null,
+              ];
+              $sec_audio_v = [
+                'Speaker Brand' => $car_more['speaker_brand'] ?? null,
+                'Speaker Quantity' => isset($car_more['speaker_quantity']) ? $car_more['speaker_quantity'] : null,
+              ];
+              $sec_drivers_v = [];
+              if (!empty($car_more['driver_assistance'])) {
+                $items = preg_split("/(\r?\n)|,\s*/", $car_more['driver_assistance']);
+                foreach ($items as $it) { $it = trim((string)$it); if ($it !== '') { $sec_drivers_v[] = $it; } }
+              }
+              $sec_interior_v = [
+                'Heated Seat' => (isset($car_more['heated_seat']) && (int)$car_more['heated_seat'] === 1) ? 'Yes' : null,
+                'Cooling Seat' => (isset($car_more['cooling_seat']) && (int)$car_more['cooling_seat'] === 1) ? 'Yes' : null,
+              ];
+              $sec_dimensions_v = [
+                'Length (mm)' => $car_more['length_mm'] ?? null,
+                'Width (mm)' => $car_more['width_mm'] ?? null,
+                'Height (mm)' => $car_more['height_mm'] ?? null,
+                'Wheel Base (mm)' => $car_more['wheel_base_mm'] ?? null,
+                'Turning Circle' => $car_more['turning_circle'] ?? null,
+              ];
+              $sec_fuel_v = [
+                'Fuel Consumption (L/100km)' => $car_more['fuel_consumption'] ?? null,
+              ];
+              $sec_suspension_v = [
+                'Front Suspension' => $car_more['front_suspension'] ?? null,
+                'Rear Suspension' => $car_more['rear_suspension'] ?? null,
+              ];
+              $sec_other_v = [];
+              if (!empty($car_more['other_features'])) {
+                $oitems = preg_split("/(\r?\n)|,\s*/", $car_more['other_features']);
+                foreach ($oitems as $it) { $it = trim((string)$it); if ($it !== '') { $sec_other_v[] = $it; } }
+              }
+
+              $sections_v = [
+                'Audio and Communications' => $sec_audio_v,
+                'Drivers Assistance' => $sec_drivers_v,
+                'Dimensions' => $sec_dimensions_v,
+                'Fuel Economy' => $sec_fuel_v,
+                'Suspension' => $sec_suspension_v,
+                'Interior' => $sec_interior_v,
+                'Other' => $sec_other_v,
+                'Performance' => $sec_perf_v,
+                'Wheels & Tyres' => $sec_wheels_v,
+                'Basic Specs' => $sec_basic_v,
+              ];
+            ?>
+            <div id="featureAccordionView" class="divide-y border rounded">
+              <?php $idx=0; foreach ($sections_v as $secName => $items): $idx++; $clean = array_filter($items, function($v){ return !is_null($v) && $v !== ''; }); $cnt = count($clean); $open = ($secName === 'Basic Specs'); ?>
+                <div class="acc-section-v" data-acc-section>
+                  <button type="button" class="w-full flex items-center justify-between p-4 hover:bg-gray-50 focus:outline-none acc-toggle-v" aria-expanded="<?php echo $open ? 'true' : 'false'; ?>">
+                    <div class="flex items-center gap-3">
+                      <span class="font-semibold"><?php echo htmlspecialchars($secName); ?></span>
+                    </div>
+                    <div class="flex items-center gap-3">
+                      <span class="inline-flex items-center justify-center text-xs font-semibold text-gray-700 bg-gray-100 rounded px-2 py-0.5 acc-count-v"><?php echo (int)$cnt; ?></span>
+                      <svg class="w-5 h-5 text-gray-500 transform transition-transform duration-200 acc-caret-v <?php echo $open ? 'rotate-180' : ''; ?>" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M5.23 7.21a.75.75 0 011.06.02L10 10.94l3.71-3.71a.75.75 0 011.08 1.04l-4.25 4.25a.75.75 0 01-1.08 0L5.21 8.27a.75.75 0 01.02-1.06z" clip-rule="evenodd"/></svg>
+                    </div>
+                  </button>
+                  <div class="acc-panel-v <?php echo $open ? '' : 'hidden'; ?> px-6 pb-4">
+                    <?php if ($cnt > 0): ?>
+                      <?php $isBullets = array_values($clean) === $clean; ?>
+                      <ul class="list-disc pl-5 space-y-1 acc-list-v">
+                        <?php if ($isBullets): ?>
+                          <?php foreach ($clean as $text): ?>
+                            <li class="text-sm text-gray-700"><span class="acc-item-text"><?php echo htmlspecialchars((string)$text); ?></span></li>
+                          <?php endforeach; ?>
+                        <?php else: ?>
+                          <?php foreach ($clean as $label => $val): ?>
+                            <li class="text-sm text-gray-700"><span class="font-medium"><?php echo htmlspecialchars($label); ?>:</span> <span class="acc-item-text"><?php echo htmlspecialchars((string)$val); ?></span></li>
+                          <?php endforeach; ?>
+                        <?php endif; ?>
+                      </ul>
+                    <?php else: ?>
+                      <div class="text-sm text-gray-500 italic acc-empty-v">No items yet.</div>
+                    <?php endif; ?>
+                  </div>
+                </div>
+              <?php endforeach; ?>
+            </div>
+          </div>
+        </div>
+        <div class="px-5 py-3 border-t flex justify-end">
+          <button id="closeMoreDetailsBottomView" class="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700">Close</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+<!-- Report Modal -->
+<div id="reportModal" class="hidden fixed inset-0 z-50" aria-modal="true" role="dialog">
+  <div id="reportBackdrop" class="absolute inset-0 bg-black bg-opacity-50 opacity-0 transition-opacity duration-200"></div>
+  <div class="absolute inset-0 flex items-center justify-center p-4">
+    <div id="reportPanel" class="bg-white w-full max-w-xl rounded-lg shadow-xl transform scale-95 opacity-0 transition-all duration-200">
+      <form method="post">
+        <div class="flex items-center justify-between px-5 py-3 border-b">
+          <h3 class="text-lg font-semibold">Report this listing</h3>
+          <button type="button" id="closeReportModalX" class="text-gray-500 hover:text-gray-700" aria-label="Close">✕</button>
+        </div>
+  <div class="p-5 space-y-4 overflow-y-auto" style="max-height:70vh;">
+          <p class="text-sm text-gray-600">Select one or more reasons below. Add any details to help us review.</p>
+          <fieldset class="grid grid-cols-1 md:grid-cols-2 gap-3">
+            <?php
+              $reasonOptions = [
+                'car_info_incorrect' => 'Car info incorrect',
+                'car_unavailable' => 'Car unavailable / already sold',
+                'seller_ghosting' => 'Seller ghosting / unresponsive',
+                'price_misleading' => 'Price misleading',
+                'duplicate_listing' => 'Duplicate listing',
+                'offensive_content' => 'Offensive/inappropriate content',
+                'scam_suspected' => 'Scam suspected',
+                'images_misleading' => 'Images are misleading',
+                'view_360_issue' => '3D/360 view issue',
+              ];
+              foreach ($reasonOptions as $val => $label): ?>
+                <label class="inline-flex items-start gap-2 text-sm text-gray-800">
+                  <input type="checkbox" name="reasons[]" value="<?php echo htmlspecialchars($val); ?>" class="mt-0.5">
+                  <span><?php echo htmlspecialchars($label); ?></span>
+                </label>
+            <?php endforeach; ?>
+          </fieldset>
+          <div>
+            <label for="reportDetails" class="block text-sm font-medium text-gray-700 mb-1">Additional details (optional)</label>
+            <textarea id="reportDetails" name="details" rows="4" class="w-full border rounded p-2" placeholder="Describe the issue..."></textarea>
+          </div>
+        </div>
+        <div class="px-5 py-3 border-t flex justify-end gap-3">
+          <button type="button" id="closeReportModal" class="px-4 py-2 border rounded text-gray-800 hover:bg-gray-50">Cancel</button>
+          <button type="submit" name="submit_report" value="1" class="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded">Submit Report</button>
+        </div>
+      </form>
+    </div>
+  </div>
+  <div class="sr-only" aria-live="polite" aria-atomic="true"></div>
+  </div>
 <script>
 (function(){
   function fmtRM(num){
@@ -461,6 +750,127 @@ function changeMain(src){
   if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', hook);
   } else { hook(); }
+})();
+</script>
+<script>
+(function(){
+  var openBtn = document.getElementById('openMoreDetailsView');
+  var modal = document.getElementById('moreDetailsModalView');
+  var closeTop = document.getElementById('closeMoreDetailsView');
+  var closeBottom = document.getElementById('closeMoreDetailsBottomView');
+  var backdrop = document.getElementById('moreDetailsBackdropView');
+  var panel = document.getElementById('moreDetailsPanelView');
+  var accRoot = document.getElementById('featureAccordionView');
+  var searchInput = document.getElementById('featureSearchView');
+
+  function openModal(){
+    if(!modal) return;
+    modal.classList.remove('hidden');
+    document.body.classList.add('overflow-hidden');
+    requestAnimationFrame(function(){
+      backdrop && backdrop.classList.add('opacity-100');
+      panel && panel.classList.remove('translate-x-full');
+      closeTop && closeTop.focus();
+    });
+  }
+  function closeModal(){
+    if(!modal) return;
+    backdrop && backdrop.classList.remove('opacity-100');
+    panel && panel.classList.add('translate-x-full');
+    var onEnd = function(e){ if(e.target===panel){ modal.classList.add('hidden'); document.body.classList.remove('overflow-hidden'); panel.removeEventListener('transitionend', onEnd);} };
+    panel && panel.addEventListener('transitionend', onEnd);
+  }
+  if (openBtn) openBtn.addEventListener('click', openModal);
+  if (closeTop) closeTop.addEventListener('click', closeModal);
+  if (closeBottom) closeBottom.addEventListener('click', closeModal);
+  if (backdrop) backdrop.addEventListener('click', closeModal);
+  document.addEventListener('keydown', function(e){ if(e.key==='Escape'){ closeModal(); }});
+
+  // Accordion
+  if (accRoot){
+    accRoot.addEventListener('click', function(e){
+      var btn = e.target.closest('.acc-toggle-v');
+      if (!btn) return;
+      var section = btn.closest('[data-acc-section]');
+      var panelEl = section.querySelector('.acc-panel-v');
+      var caret = section.querySelector('.acc-caret-v');
+      var expanded = btn.getAttribute('aria-expanded') === 'true';
+      if (expanded){
+        panelEl.classList.add('hidden');
+        caret && caret.classList.remove('rotate-180');
+        btn.setAttribute('aria-expanded','false');
+      } else {
+        panelEl.classList.remove('hidden');
+        caret && caret.classList.add('rotate-180');
+        btn.setAttribute('aria-expanded','true');
+      }
+    });
+  }
+
+  function normalize(s){ return (s||'').toString().toLowerCase(); }
+  function updateCounts(section){
+    var countEl = section.querySelector('.acc-count-v');
+    var list = section.querySelectorAll('.acc-list-v > li');
+    var emptyEl = section.querySelector('.acc-empty-v');
+    var visible = 0;
+    list.forEach(function(li){ if (!li.classList.contains('hidden')) visible++; });
+    if (countEl) countEl.textContent = visible;
+    if (emptyEl){ emptyEl.classList.toggle('hidden', visible !== 0); }
+  }
+  function applySearch(term){
+    var q = normalize(term);
+    var sections = accRoot ? accRoot.querySelectorAll('[data-acc-section]') : [];
+    sections.forEach(function(sec){
+      var items = sec.querySelectorAll('.acc-list-v > li');
+      var any = 0;
+      items.forEach(function(li){
+        var text = normalize(li.textContent);
+        var show = q === '' ? true : text.indexOf(q) !== -1;
+        li.classList.toggle('hidden', !show);
+        if (show) any++;
+      });
+      var btn = sec.querySelector('.acc-toggle-v');
+      var panelEl = sec.querySelector('.acc-panel-v');
+      var caret = sec.querySelector('.acc-caret-v');
+      if (q !== ''){
+        if (any > 0){ panelEl.classList.remove('hidden'); btn && btn.setAttribute('aria-expanded','true'); caret && caret.classList.add('rotate-180'); }
+        else { panelEl.classList.add('hidden'); btn && btn.setAttribute('aria-expanded','false'); caret && caret.classList.remove('rotate-180'); }
+      }
+      updateCounts(sec);
+    });
+  }
+  if (searchInput){ searchInput.addEventListener('input', function(){ applySearch(searchInput.value); }); }
+})();
+</script>
+<script>
+(function(){
+  var openBtn = document.getElementById('openReportModal');
+  var modal = document.getElementById('reportModal');
+  var backdrop = document.getElementById('reportBackdrop');
+  var panel = document.getElementById('reportPanel');
+  var closeX = document.getElementById('closeReportModalX');
+  var closeBtn = document.getElementById('closeReportModal');
+
+  function openModal(){
+    if (!modal) return;
+    modal.classList.remove('hidden');
+    document.body.classList.add('overflow-hidden');
+    requestAnimationFrame(function(){
+      backdrop && backdrop.classList.add('opacity-100');
+      panel && (panel.classList.remove('opacity-0'), panel.classList.remove('scale-95'));
+    });
+  }
+  function closeModal(){
+    if (!modal) return;
+    backdrop && backdrop.classList.remove('opacity-100');
+    panel && (panel.classList.add('opacity-0'), panel.classList.add('scale-95'));
+    setTimeout(function(){ modal.classList.add('hidden'); document.body.classList.remove('overflow-hidden'); }, 180);
+  }
+  if (openBtn) openBtn.addEventListener('click', openModal);
+  if (closeX) closeX.addEventListener('click', closeModal);
+  if (closeBtn) closeBtn.addEventListener('click', closeModal);
+  if (backdrop) backdrop.addEventListener('click', closeModal);
+  document.addEventListener('keydown', function(e){ if (e.key === 'Escape') closeModal(); });
 })();
 </script>
 </body>

@@ -64,6 +64,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
       </div>
       <button type="submit" class="w-full bg-red-600 text-white py-2 rounded hover:bg-red-700">Login</button>
     </form>
+
+    <p class="text-center text-sm text-gray-500 mt-6">
+        Back to user login
+        <a href="login.php" class="text-red-600 hover:underline">Back</a>
+    </p>
   </div>
 </body>
 </html>
