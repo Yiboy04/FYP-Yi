@@ -94,11 +94,14 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
   <header class="bg-white shadow-md">
     <div class="max-w-6xl mx-auto flex items-center justify-between py-4 px-6">
       <div class="flex items-center space-x-2">
-        <img src="logo.png" alt="Logo" class="h-10">
+        <img src="https://tse3.mm.bing.net/th/id/OIP.w73-zS0NB1GeYPz5r9BuCAHaEf?pid=Api&P=0&h=180 " alt="Logo" class="h-10">
         <h1 class="text-2xl font-bold text-red-600">GVC</h1>
       </div>
-      <nav>
-        <a href="#" class="text-sm text-gray-600 hover:text-red-600">Help</a>
+      <nav class="relative">
+        <a href="#" id="helpLink" class="text-sm text-gray-600 hover:text-red-600">Help</a>
+        <div id="helpPopover" class="hidden absolute right-0 mt-2 w-80 max-w-xs bg-white border border-gray-200 rounded-lg shadow-lg p-3 text-sm text-gray-700 z-20">
+          if encounter any trouble please contact tehzhiyi04@example.com
+        </div>
       </nav>
     </div>
   </header>
@@ -152,6 +155,21 @@ document.addEventListener('DOMContentLoaded', function(){
         email.setAttribute('type','text');
       }
     } catch(e) {}
+  });
+});
+// Help popover toggle
+document.addEventListener('DOMContentLoaded', function(){
+  var helpLink = document.getElementById('helpLink');
+  var helpPopover = document.getElementById('helpPopover');
+  if (!helpLink || !helpPopover) return;
+  helpLink.addEventListener('click', function(e){
+    e.preventDefault();
+    helpPopover.classList.toggle('hidden');
+  });
+  document.addEventListener('click', function(e){
+    if (!helpPopover.classList.contains('hidden') && !helpPopover.contains(e.target) && !helpLink.contains(e.target)){
+      helpPopover.classList.add('hidden');
+    }
   });
 });
 </script>

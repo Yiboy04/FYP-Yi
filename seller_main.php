@@ -470,8 +470,8 @@ function updateModelOptionsFilter(makeSelect, modelSelectId, selectedModel='') {
             <input type="number" name="year" value="<?php echo htmlspecialchars($row['year']); ?>" required class="border p-2 rounded">
             <select name="engine_capacity" required class="border p-2 rounded">
               <option value="">Select Engine Capacity</option>
-              <?php for($ec=0.6;$ec<=8.0;$ec+=0.1): ?>
-                <option value="<?php echo number_format($ec,1); ?>" <?php if(floatval($row['engine_capacity'])==round($ec,1)) echo 'selected'; ?>><?php echo number_format($ec,1); ?> L</option>
+              <?php for($i=0; $i<=80; $i++): $val = number_format($i/10, 1); ?>
+                <option value="<?php echo $val; ?>" <?php if(floatval($row['engine_capacity'])==($i/10)) echo 'selected'; ?>><?php echo $val; ?> L<?php echo ($val==='0.0'?' (EV)':''); ?></option>
               <?php endfor; ?>
             </select>
             <input type="number" name="mileage" value="<?php echo htmlspecialchars($row['mileage']); ?>" required class="border p-2 rounded">
@@ -562,8 +562,8 @@ function updateModelOptionsFilter(makeSelect, modelSelectId, selectedModel='') {
       <input type="number" name="year" placeholder="Year" required class="border p-2 rounded">
       <select name="engine_capacity" required class="border p-2 rounded">
         <option value="">Select Engine Capacity</option>
-        <?php for($ec=0.6;$ec<=8.0;$ec+=0.1): ?>
-          <option value="<?php echo number_format($ec,1); ?>"><?php echo number_format($ec,1); ?> L</option>
+        <?php for($i=0; $i<=80; $i++): $val = number_format($i/10, 1); ?>
+          <option value="<?php echo $val; ?>"><?php echo $val; ?> L<?php echo ($val==='0.0'?' (EV)':''); ?></option>
         <?php endfor; ?>
       </select>
       <input type="number" name="mileage" placeholder="Mileage (km)" required class="border p-2 rounded">

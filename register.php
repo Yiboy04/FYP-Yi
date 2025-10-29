@@ -130,7 +130,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
   <header class="bg-white shadow-md">
     <div class="max-w-6xl mx-auto flex items-center justify-between py-4 px-6">
       <div class="flex items-center space-x-2">
-        <img src="logo.png" alt="Logo" class="h-10">
+        <img src="https://tse3.mm.bing.net/th/id/OIP.w73-zS0NB1GeYPz5r9BuCAHaEf?pid=Api&P=0&h=180" alt="Logo" class="h-10">
         <h1 class="text-2xl font-bold text-red-600">GVC</h1>
       </div>
       <nav>

@@ -101,28 +101,46 @@ if ($st = $mysqli->prepare($sql)) {
   <!-- HEADER (match main.php) -->
   <header class="bg-red-600 text-white p-4">
     <div class="container mx-auto flex justify-between items-center">
-      <h1 class="text-2xl font-bold">MyCar (FYP)</h1>
+      <h1 class="text-2xl font-bold">Great Value Car (GVC)</h1>
       <nav>
         <ul class="flex gap-6 items-center">
-          <li>
-            <a href="saved_search.php" class="icon inline-flex items-center" title="Saved Searches">
-              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" class="w-6 h-6 text-white">
-                <path d="M6 2a2 2 0 0 0-2 2v18l8-4 8 4V4a2 2 0 0 0-2-2H6z"/>
-              </svg>
-            </a>
-          </li>
           <li><a href="main.php" class="hover:underline">Home</a></li>
           <li><a href="list_cars.php" class="hover:underline">Listings</a></li>
-          <li><a href="#" class="hover:underline">About</a></li>
           <?php if (!empty($_SESSION['role']) && $_SESSION['role']==='buyer'): ?>
-            <li><a href="buyer_bookings.php" class="hover:underline">Bookings</a></li>
             <li><a href="buyer_profile.php" class="hover:underline">Profile</a></li>
           <?php endif; ?>
+          <!-- Fold-down menu -->
+          <li class="relative" id="moreMenu">
+            <button id="moreBtn" class="inline-flex items-center gap-1 px-3 py-1 bg-white bg-opacity-10 hover:bg-opacity-20 rounded">
+              <span>More</span>
+              <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M5.23 7.21a.75.75 0 011.06.02L10 10.94l3.71-3.71a.75.75 0 111.06 1.06l-4.24 4.24a.75.75 0 01-1.06 0L5.21 8.29a.75.75 0 01.02-1.08z" clip-rule="evenodd"/></svg>
+            </button>
+            <div id="morePanel" class="hidden absolute right-0 mt-2 w-52 bg-white text-gray-800 rounded-md shadow-lg py-1 z-50">
+              <a href="analysis.php" class="block px-4 py-2 hover:bg-gray-100">Analysis</a>
+              <a href="saved_search.php" class="block px-4 py-2 hover:bg-gray-100">Saved</a>
+              <a href="compare.php" class="block px-4 py-2 hover:bg-gray-100">Compare</a>
+              <?php if (!empty($_SESSION['role']) && $_SESSION['role']==='buyer'): ?>
+                <a href="buyer_bookings.php" class="block px-4 py-2 hover:bg-gray-100">Bookings</a>
+              <?php endif; ?>
+              <a href="about.php" class="block px-4 py-2 hover:bg-gray-100">About</a>
+            </div>
+          </li>
           <li><a href="logout.php" class="hover:underline">Logout</a></li>
         </ul>
       </nav>
     </div>
   </header>
+  <script>
+    // Simple dropdown toggle for header "More" menu
+    (function(){
+      const menu = document.getElementById('moreMenu');
+      const btn = document.getElementById('moreBtn');
+      const panel = document.getElementById('morePanel');
+      if (!menu || !btn || !panel) return;
+      btn.addEventListener('click', (e) => { e.preventDefault(); panel.classList.toggle('hidden'); });
+      document.addEventListener('click', (e) => { if (!menu.contains(e.target)) panel.classList.add('hidden'); });
+    })();
+  </script>
 
   <!-- MAIN -->
   <main class="container mx-auto flex-1 p-6">
@@ -166,7 +184,7 @@ if ($st = $mysqli->prepare($sql)) {
   <!-- FOOTER -->
   <footer class="bg-gray-800 text-white p-4">
     <div class="container mx-auto text-center">
-      <p>&copy; <?php echo date('Y'); ?> MyCar (FYP). All rights reserved.</p>
+      <p>&copy; <?php echo date('Y'); ?> Great Value Car (GVC). All rights reserved.</p>
     </div>
   </footer>
 </body>

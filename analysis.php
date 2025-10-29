@@ -152,7 +152,7 @@ foreach ($labels as $mk) {
   <!-- Header (match main.php style) -->
   <header class="bg-red-600 text-white p-4">
     <div class="container mx-auto flex justify-between items-center">
-      <h1 class="text-2xl font-bold">MyCar (FYP)</h1>
+      <h1 class="text-2xl font-bold">Great Value Car (GVC)</h1>
       <nav>
         <ul class="flex gap-6 items-center">
           <li><a href="main.php" class="hover:underline">Home</a></li>
@@ -169,10 +169,11 @@ foreach ($labels as $mk) {
             <div id="morePanel" class="hidden absolute right-0 mt-2 w-52 bg-white text-gray-800 rounded-md shadow-lg py-1 z-50">
               <a href="analysis.php" class="block px-4 py-2 hover:bg-gray-100">Analysis</a>
               <a href="saved_search.php" class="block px-4 py-2 hover:bg-gray-100">Saved</a>
+              <a href="compare.php" class="block px-4 py-2 hover:bg-gray-100">Compare</a>
               <?php if (!empty($_SESSION['role']) && $_SESSION['role']==='buyer'): ?>
                 <a href="buyer_bookings.php" class="block px-4 py-2 hover:bg-gray-100">Bookings</a>
               <?php endif; ?>
-              <a href="#" class="block px-4 py-2 hover:bg-gray-100">About</a>
+              <a href="about.php" class="block px-4 py-2 hover:bg-gray-100">About</a>
             </div>
           </li>
           <li><a href="logout.php" class="hover:underline">Logout</a></li>

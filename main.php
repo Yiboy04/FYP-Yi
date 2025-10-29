@@ -113,7 +113,7 @@ if ($chartView === 'make') {
   <!-- HEADER -->
   <header class="bg-red-600 text-white p-4">
     <div class="container mx-auto flex justify-between items-center">
-      <h1 class="text-2xl font-bold">MyCar (FYP)</h1>
+      <h1 class="text-2xl font-bold">Great Value Car (GVC)</h1>
       <nav>
         <ul class="flex gap-6 items-center">
           <li><a href="main.php" class="hover:underline">Home</a></li>
@@ -130,10 +130,11 @@ if ($chartView === 'make') {
             <div id="morePanel" class="hidden absolute right-0 mt-2 w-52 bg-white text-gray-800 rounded-md shadow-lg py-1 z-50">
               <a href="analysis.php" class="block px-4 py-2 hover:bg-gray-100">Analysis</a>
               <a href="saved_search.php" class="block px-4 py-2 hover:bg-gray-100">Saved</a>
+              <a href="compare.php" class="block px-4 py-2 hover:bg-gray-100">Compare</a>
               <?php if (!empty($_SESSION['role']) && $_SESSION['role']==='buyer'): ?>
                 <a href="buyer_bookings.php" class="block px-4 py-2 hover:bg-gray-100">Bookings</a>
               <?php endif; ?>
-              <a href="#" class="block px-4 py-2 hover:bg-gray-100">About</a>
+              <a href="about.php" class="block px-4 py-2 hover:bg-gray-100">About</a>
             </div>
           </li>
           <li><a href="logout.php" class="hover:underline">Logout</a></li>
@@ -235,7 +236,7 @@ if ($chartView === 'make') {
     <div class="container mx-auto max-w-6xl px-4">
       <div class="flex items-center justify-between mb-4">
         <h2 class="text-2xl font-bold">Recently Viewed</h2>
-        <a href="car_view.php" class="text-blue-600 hover:underline">Browse all</a>
+        <a href="list_cars.php" class="text-blue-600 hover:underline">Browse all</a>
       </div>
       <?php if (!empty($recentCars)): ?>
         <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
@@ -257,7 +258,7 @@ if ($chartView === 'make') {
           <?php endforeach; ?>
         </div>
       <?php else: ?>
-        <div class="text-gray-600">No cars viewed yet. Explore our <a class="text-blue-600 hover:underline" href="car_view.php">listings</a>.</div>
+        <div class="text-gray-600">No cars viewed yet. Explore our <a class="text-blue-600 hover:underline" href="list_cars.php">listings</a>.</div>
       <?php endif; ?>
     </div>
   </section>
@@ -457,7 +458,7 @@ if ($chartView === 'make') {
   <!-- FOOTER -->
   <footer class="bg-gray-800 text-white p-4">
     <div class="container mx-auto text-center">
-      <p>&copy; <?php echo date("Y"); ?> MyCar (FYP). All rights reserved.</p>
+      <p>&copy; <?php echo date("Y"); ?> Great Value Car (GVC). All rights reserved.</p>
     </div>
   </footer>
 

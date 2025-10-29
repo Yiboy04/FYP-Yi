@@ -263,7 +263,7 @@ if ($st = $mysqli->prepare($sql)) {
   <!-- FOOTER -->
   <footer class="bg-gray-800 text-white p-4">
     <div class="container mx-auto text-center">
-      <p>&copy; <?php echo date('Y'); ?> MyCar (FYP). All rights reserved.</p>
+      <p>&copy; <?php echo date('Y'); ?> Great Value Car (GVC). All rights reserved.</p>
     </div>
   </footer>
 </body>

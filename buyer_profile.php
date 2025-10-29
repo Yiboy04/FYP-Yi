@@ -175,12 +175,14 @@ if (!empty($_SESSION['recently_viewed']) && is_array($_SESSION['recently_viewed'
   <!-- HEADER -->
   <header class="bg-red-600 text-white p-4">
     <div class="container mx-auto flex justify-between items-center">
-      <h1 class="text-2xl font-bold">My Profile</h1>
+      <h1 class="text-2xl font-bold">Great Value Car (GVC)</h1>
       <nav>
         <ul class="flex gap-6 items-center">
           <li><a href="main.php" class="hover:underline">Home</a></li>
           <li><a href="list_cars.php" class="hover:underline">Listings</a></li>
-          <li><a href="buyer_profile.php" class="underline font-semibold">Profile</a></li>
+          <?php if (!empty($_SESSION['role']) && $_SESSION['role']==='buyer'): ?>
+            <li><a href="buyer_profile.php" class="hover:underline">Profile</a></li>
+          <?php endif; ?>
           <!-- Fold-down menu -->
           <li class="relative" id="moreMenu">
             <button id="moreBtn" class="inline-flex items-center gap-1 px-3 py-1 bg-white bg-opacity-10 hover:bg-opacity-20 rounded">
@@ -190,8 +192,11 @@ if (!empty($_SESSION['recently_viewed']) && is_array($_SESSION['recently_viewed'
             <div id="morePanel" class="hidden absolute right-0 mt-2 w-52 bg-white text-gray-800 rounded-md shadow-lg py-1 z-50">
               <a href="analysis.php" class="block px-4 py-2 hover:bg-gray-100">Analysis</a>
               <a href="saved_search.php" class="block px-4 py-2 hover:bg-gray-100">Saved</a>
-              <a href="buyer_bookings.php" class="block px-4 py-2 hover:bg-gray-100">Bookings</a>
-              <a href="#" class="block px-4 py-2 hover:bg-gray-100">About</a>
+              <a href="compare.php" class="block px-4 py-2 hover:bg-gray-100">Compare</a>
+              <?php if (!empty($_SESSION['role']) && $_SESSION['role']==='buyer'): ?>
+                <a href="buyer_bookings.php" class="block px-4 py-2 hover:bg-gray-100">Bookings</a>
+              <?php endif; ?>
+              <a href="about.php" class="block px-4 py-2 hover:bg-gray-100">About</a>
             </div>
           </li>
           <li><a href="logout.php" class="hover:underline">Logout</a></li>
@@ -290,7 +295,7 @@ if (!empty($_SESSION['recently_viewed']) && is_array($_SESSION['recently_viewed'
   <!-- FOOTER -->
   <footer class="bg-gray-800 text-white p-4">
     <div class="container mx-auto text-center">
-      <p>&copy; <?php echo date('Y'); ?> MyCar (FYP). All rights reserved.</p>
+      <p>&copy; <?php echo date('Y'); ?> Great Value Car (GVC). All rights reserved.</p>
     </div>
   </footer>
 </body>

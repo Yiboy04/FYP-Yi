@@ -91,24 +91,42 @@ if (!empty($carIds)) {
   </style>
   </head>
 <body class="bg-gray-100 min-h-screen">
-  <header class="bg-red-600 text-white p-4">
-    <div class="container mx-auto flex justify-between items-center">
-      <h1 class="text-2xl font-bold">My Bookings</h1>
+  <header class="bg-red-600 text-white">
+    <div class="container mx-auto flex justify-between items-center p-4">
+      <a href="main.php" class="text-2xl font-bold">Great Value Car (GVC)</a>
       <nav>
-        <ul class="flex gap-6 items-center">
-          <li><a href="saved_search.php" title="Saved" class="hover:underline">Saved</a></li>
+        <ul class="flex items-center space-x-6">
           <li><a href="main.php" class="hover:underline">Home</a></li>
           <li><a href="list_cars.php" class="hover:underline">Listings</a></li>
           <?php if (!empty($_SESSION['role']) && $_SESSION['role']==='buyer'): ?>
             <li><a href="buyer_profile.php" class="hover:underline">Profile</a></li>
           <?php endif; ?>
-          <li><a href="logout.php" class="hover:underline">Logout</a></li>
+          <li class="relative">
+            <button id="moreMenuBtn" type="button" class="hover:underline">More</button>
+            <div id="moreMenu" class="hidden absolute right-0 mt-2 w-48 bg-white text-gray-800 rounded shadow">
+              <a href="analysis.php" class="block px-4 py-2 hover:bg-gray-100">Analysis</a>
+              <a href="saved_search.php" class="block px-4 py-2 hover:bg-gray-100">Saved</a>
+              <a href="compare.php" class="block px-4 py-2 hover:bg-gray-100">Compare</a>
+              <?php if (!empty($_SESSION['role']) && $_SESSION['role']==='buyer'): ?>
+                <a href="buyer_bookings.php" class="block px-4 py-2 hover:bg-gray-100">Bookings</a>
+              <?php endif; ?>
+              <a href="about.php" class="block px-4 py-2 hover:bg-gray-100">About</a>
+            </div>
+          </li>
+          <?php if (isset($_SESSION['user_id'])): ?>
+            <li><a href="logout.php" class="hover:underline">Logout</a></li>
+          <?php else: ?>
+            <li><a href="login.php" class="hover:underline">Login</a></li>
+          <?php endif; ?>
         </ul>
       </nav>
     </div>
   </header>
 
   <main class="container mx-auto mt-8 flex flex-col gap-8">
+    <div class="flex items-center justify-between">
+      <h1 class="text-2xl font-bold">My Bookings</h1>
+    </div>
     <!-- Pending section -->
     <section class="bg-white rounded-xl shadow p-6">
       <div class="flex items-center justify-between mb-4">
@@ -186,5 +204,17 @@ if (!empty($carIds)) {
       <?php endif; ?>
     </section>
   </main>
+  <script>
+    document.addEventListener('click', function(e) {
+      var btn = document.getElementById('moreMenuBtn');
+      var menu = document.getElementById('moreMenu');
+      if (!btn || !menu) return;
+      if (btn.contains(e.target)) {
+        menu.classList.toggle('hidden');
+      } else if (!menu.contains(e.target)) {
+        menu.classList.add('hidden');
+      }
+    });
+  </script>
 </body>
 </html>

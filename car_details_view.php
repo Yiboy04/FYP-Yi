@@ -288,7 +288,7 @@ function changeMain(src){
 <body class="bg-gray-100">
 <header class="bg-red-600 text-white p-4">
   <div class="container mx-auto flex justify-between items-center">
-    <h1 class="text-2xl font-bold">MyCar (FYP)</h1>
+    <h1 class="text-2xl font-bold">Great Value Car (GVC)</h1>
     <nav>
       <ul class="flex gap-6 items-center">
         <li>

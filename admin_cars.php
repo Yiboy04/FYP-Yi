@@ -13,6 +13,9 @@ if ($mysqli->connect_errno) {
 // Filters and sorting
 $search = isset($_GET['search']) ? trim((string)$_GET['search']) : '';
 $makeFilter = isset($_GET['make']) ? trim((string)$_GET['make']) : '';
+$carStatus = isset($_GET['car_status']) ? trim((string)$_GET['car_status']) : '';
+// Normalize car_status to allowed values only
+$carStatus = in_array($carStatus, ['open','sold'], true) ? $carStatus : '';
 $yearFrom = isset($_GET['year_from']) && $_GET['year_from'] !== '' ? intval($_GET['year_from']) : null;
 $yearTo = isset($_GET['year_to']) && $_GET['year_to'] !== '' ? intval($_GET['year_to']) : null;
 $sort = isset($_GET['sort']) ? $_GET['sort'] : 'latest';
@@ -30,6 +33,12 @@ if ($makeFilter !== '') {
 }
 if (!is_null($yearFrom)) { $conditions[] = "c.year >= ".intval($yearFrom); }
 if (!is_null($yearTo)) { $conditions[] = "c.year <= ".intval($yearTo); }
+if ($carStatus === 'sold') {
+  $conditions[] = "COALESCE(c.listing_status,'') = 'sold'";
+} else if ($carStatus === 'open') {
+  // Treat NULL/''/open/negotiating as open listings
+  $conditions[] = "(c.listing_status IS NULL OR c.listing_status = '' OR c.listing_status IN ('open','negotiating'))";
+}
 
 switch ($sort) {
   case 'year_desc': $orderBy = 'c.year DESC, c.car_id DESC'; break;
@@ -113,8 +122,8 @@ if ($res) {
               <a href="admin_cars.php" class="px-3 py-2 border rounded text-gray-800 hover:bg-gray-50">Reset</a>
             </div>
           </div>
-          <?php $filterOpen = ($makeFilter!=='' || !is_null($yearFrom) || !is_null($yearTo)); ?>
-          <div id="filterPanel" class="<?php echo $filterOpen ? '' : 'hidden'; ?> p-4 bg-gray-50 border-t grid grid-cols-1 md:grid-cols-4 gap-4">
+          <?php $filterOpen = ($makeFilter!=='' || !is_null($yearFrom) || !is_null($yearTo) || $carStatus !== ''); ?>
+          <div id="filterPanel" class="<?php echo $filterOpen ? '' : 'hidden'; ?> p-4 bg-gray-50 border-t grid grid-cols-1 md:grid-cols-5 gap-4">
             <div>
               <label class="block text-sm text-gray-600 mb-1">Make</label>
               <input type="text" name="make" value="<?php echo htmlspecialchars($makeFilter); ?>" class="w-full px-3 py-2 border rounded" placeholder="e.g. Toyota">
@@ -126,6 +135,14 @@ if ($res) {
             <div>
               <label class="block text-sm text-gray-600 mb-1">Year To</label>
               <input type="number" name="year_to" value="<?php echo htmlspecialchars($yearTo ?? ''); ?>" class="w-full px-3 py-2 border rounded" min="1900" max="2100">
+            </div>
+            <div>
+              <label class="block text-sm text-gray-600 mb-1">Car Status</label>
+              <select name="car_status" class="w-full px-3 py-2 border rounded">
+                <option value="" <?php echo $carStatus===''?'selected':''; ?>>Any</option>
+                <option value="open" <?php echo $carStatus==='open'?'selected':''; ?>>Open</option>
+                <option value="sold" <?php echo $carStatus==='sold'?'selected':''; ?>>Sold</option>
+              </select>
             </div>
             <div class="flex items-end">
               <button type="submit" class="w-full px-3 py-2 bg-red-600 text-white rounded">Apply Filters</button>
