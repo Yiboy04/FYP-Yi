@@ -22,6 +22,11 @@ $engine_capacity = isset($_GET['engine_capacity']) ? $mysqli->real_escape_string
 $variant = isset($_GET['variant']) ? $mysqli->real_escape_string($_GET['variant']) : '';
 $transmissionFilter = isset($_GET['transmission']) ? $mysqli->real_escape_string($_GET['transmission']) : '';
 
+// Pagination
+$page = isset($_GET['page']) ? max(1, intval($_GET['page'])) : 1;
+$perPage = 10;
+$offset = ($page - 1) * $perPage;
+
 // Sort option (whitelist to avoid SQL injection)
 $sort = isset($_GET['sort']) ? $_GET['sort'] : 'random';
 $allowedSorts = ['price_desc','price_asc','year_desc','year_asc','mileage_desc','mileage_asc','random'];
@@ -31,8 +36,8 @@ if (!in_array($sort, $allowedSorts, true)) { $sort = 'random'; }
 $baseScope = [];
 if ($make) $baseScope[] = "make='$make'";
 if ($model) $baseScope[] = "model='$model'";
-// Only include open listings in option lists
-$baseScope[] = "(listing_status IS NULL OR listing_status='open')";
+// Only include listings visible publicly: NULL, empty, 'open', or 'negotiating'
+$baseScope[] = "((listing_status IS NULL) OR TRIM(listing_status)='' OR LOWER(TRIM(listing_status)) IN ('open','negotiating'))";
 
 // Variants from cars
 $variantOptions = [];
@@ -52,7 +57,7 @@ $colorOptions = [];
   $where = [];
   if ($make) $where[] = "c.make='$make'";
   if ($model) $where[] = "c.model='$model'";
-  $where[] = "(c.listing_status IS NULL OR c.listing_status='open')";
+  $where[] = "((c.listing_status IS NULL) OR TRIM(c.listing_status)='' OR LOWER(TRIM(c.listing_status)) IN ('open','negotiating'))";
   $where[] = "cd.color IS NOT NULL AND cd.color<>''";
   $sqlOpt = "SELECT DISTINCT cd.color AS color FROM car_details cd JOIN cars c ON cd.car_id=c.car_id" . (count($where) ? (" WHERE " . implode(' AND ', $where)) : "") . " ORDER BY cd.color ASC";
   $colorRes = $mysqli->query($sqlOpt);
@@ -64,8 +69,8 @@ if ($make) $where[] = "make='$make'";
 if ($model) $where[] = "model='$model'";
 $where[] = "year>=$minYear AND year<=$maxYear";
 $where[] = "price>=$minPrice AND price<=$maxPrice";
-// Only show open listings in results
-$where[] = "(cars.listing_status IS NULL OR cars.listing_status='open')";
+// Only show publicly visible listings (treat blank as open)
+$where[] = "((cars.listing_status IS NULL) OR TRIM(cars.listing_status)='' OR LOWER(TRIM(cars.listing_status)) IN ('open','negotiating'))";
 // apply new filters
 if ($variant) $where[] = "variant='$variant'";
 if ($transmissionFilter) $where[] = "transmission='$transmissionFilter'";
@@ -94,15 +99,27 @@ switch ($sort) {
   default:             $orderBy = "RAND()"; break;
 }
 
-$sql = "SELECT cars.*, cd.color AS cd_color, cd.car_condition AS cd_condition FROM cars LEFT JOIN car_details cd ON cars.car_id = cd.car_id $whereSQL ORDER BY $orderBy";
+// Total count for pagination
+$total = 0; $totalPages = 1;
+$countSql = "SELECT COUNT(DISTINCT cars.car_id) AS total FROM cars LEFT JOIN car_details cd ON cars.car_id = cd.car_id $whereSQL";
+if ($cnt = $mysqli->query($countSql)) { $row = $cnt->fetch_assoc(); $total = (int)($row['total'] ?? 0); $cnt->close(); }
+$totalPages = max(1, (int)ceil($total / $perPage));
+if ($page > $totalPages) { $page = $totalPages; $offset = ($page - 1) * $perPage; }
+
+// Page of results
+$sql = "SELECT cars.*, cd.color AS cd_color, cd.car_condition AS cd_condition FROM cars LEFT JOIN car_details cd ON cars.car_id = cd.car_id $whereSQL ORDER BY $orderBy LIMIT $perPage OFFSET $offset";
 $res = $mysqli->query($sql);
 // Preload thumbnails for cars in result to avoid N+1 queries
 $rows = [];
 $carIds = [];
+$seen = [];
 if ($res instanceof mysqli_result) {
   while ($r = $res->fetch_assoc()) {
-    $carIds[] = $r['car_id'];
-    $rows[] = $r; // keep rows in memory to iterate later
+    $cid = (int)$r['car_id'];
+    if (isset($seen[$cid])) { continue; } // de-duplicate by car_id in case of unintended joins
+    $seen[$cid] = true;
+    $carIds[] = $cid;
+    $rows[] = $r; // keep unique rows in memory to iterate later
   }
 }
 
@@ -178,7 +195,7 @@ if (count($carIds) > 0) {
         <label class="block mb-1">Make</label>
         <select name="make" class="w-full p-2 border rounded" onchange="this.form.submit()">
           <option value="">All Makes</option>
-          <?php $makesRes = $mysqli->query("SELECT DISTINCT make FROM cars WHERE (listing_status IS NULL OR listing_status='open') ORDER BY make ASC");
+          <?php $makesRes = $mysqli->query("SELECT DISTINCT make FROM cars WHERE ((listing_status IS NULL) OR TRIM(listing_status)='' OR LOWER(TRIM(listing_status)) IN ('open','negotiating')) ORDER BY make ASC");
           while($row = $makesRes->fetch_assoc()): ?>
             <option value="<?php echo htmlspecialchars($row['make']); ?>" <?php if($make==$row['make']) echo 'selected'; ?>><?php echo htmlspecialchars($row['make']); ?></option>
           <?php endwhile; ?>
@@ -188,7 +205,7 @@ if (count($carIds) > 0) {
         <label class="block mb-1">Model</label>
         <select name="model" class="w-full p-2 border rounded" onchange="this.form.submit()">
           <option value="">All Models</option>
-          <?php if($make): $modelsRes = $mysqli->query("SELECT DISTINCT model FROM cars WHERE make='$make' AND (listing_status IS NULL OR listing_status='open') ORDER BY model ASC");
+          <?php if($make): $modelsRes = $mysqli->query("SELECT DISTINCT model FROM cars WHERE make='$make' AND ((listing_status IS NULL) OR TRIM(listing_status)='' OR LOWER(TRIM(listing_status)) IN ('open','negotiating')) ORDER BY model ASC");
           while($row = $modelsRes->fetch_assoc()): ?>
             <option value="<?php echo htmlspecialchars($row['model']); ?>" <?php if($model==$row['model']) echo 'selected'; ?>><?php echo htmlspecialchars($row['model']); ?></option>
           <?php endwhile; endif; ?>
@@ -363,6 +380,24 @@ if (count($carIds) > 0) {
           </div>
         </div>
       <?php endforeach; ?>
+      <!-- Pagination Controls -->
+      <?php
+        // Build base query string without page
+        $qs = $_GET; unset($qs['page']);
+        $baseQs = http_build_query($qs);
+        $start = $total > 0 ? ($offset + 1) : 0;
+        $end = min($offset + count($rows), $total);
+        $prevLink = 'list_cars.php?' . htmlspecialchars($baseQs . ($baseQs ? '&' : '') . 'page=' . max(1, $page-1));
+        $nextLink = 'list_cars.php?' . htmlspecialchars($baseQs . ($baseQs ? '&' : '') . 'page=' . min($totalPages, $page+1));
+      ?>
+      <div class="flex flex-col sm:flex-row items-center justify-between gap-3 mt-4">
+        <div class="text-sm text-gray-600">Showing <?php echo $start; ?>–<?php echo $end; ?> of <?php echo $total; ?></div>
+        <div class="flex items-center gap-2">
+          <a href="<?php echo $prevLink; ?>" class="px-3 py-1 border rounded <?php echo $page<=1?'opacity-50 pointer-events-none':''; ?>">Prev</a>
+          <span class="text-sm">Page <?php echo $page; ?> of <?php echo $totalPages; ?></span>
+          <a href="<?php echo $nextLink; ?>" class="px-3 py-1 border rounded <?php echo $page>=$totalPages?'opacity-50 pointer-events-none':''; ?>">Next</a>
+        </div>
+      </div>
       <?php else: ?>
         <div class="col-span-3 text-center text-gray-500 py-12">No results.</div>
       <?php endif; ?>

@@ -98,10 +98,12 @@ if (isset($_GET['car_id'])) {
 $where = ["seller_id = ?"];
 $types = 'i';
 $params = [$seller_id];
-if (in_array($f_status, ['sold','considering','negotiating'], true)) {
-  $where[] = "listing_status = ?"; $types .= 's'; $params[] = $f_status;
+if (in_array(strtolower($f_status), ['sold','considering','negotiating'], true)) {
+  // Normalize comparison to be robust to case/whitespace stored in DB
+  $where[] = "LOWER(TRIM(listing_status)) = ?"; $types .= 's'; $params[] = strtolower($f_status);
 } else {
-  $where[] = "listing_status IN ('sold','considering','negotiating')";
+  // Show all non-open statuses, robust to case/whitespace
+  $where[] = "LOWER(TRIM(listing_status)) IN ('sold','considering','negotiating')";
 }
 if ($f_q !== '') {
   $like = '%' . $mysqli->real_escape_string($f_q) . '%';

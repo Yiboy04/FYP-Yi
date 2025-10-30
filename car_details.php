@@ -115,9 +115,45 @@ $mysqli->query("ALTER TABLE car_more_detail ADD COLUMN IF NOT EXISTS top_speed_k
 // Add other_features column if missing
 $mysqli->query("ALTER TABLE car_more_detail ADD COLUMN IF NOT EXISTS other_features TEXT NULL AFTER cooling_seat");
 
+// ===== Certified Requests (idempotent) =====
+$mysqli->query("CREATE TABLE IF NOT EXISTS certified_requests (
+  request_id INT AUTO_INCREMENT PRIMARY KEY,
+  car_id INT NOT NULL,
+  seller_id INT NOT NULL,
+  status ENUM('requested','approved','declined','cancelled') NOT NULL DEFAULT 'requested',
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  decided_at TIMESTAMP NULL DEFAULT NULL,
+  decided_by INT NULL,
+  INDEX idx_cert_car_status (car_id, status),
+  CONSTRAINT fk_cert_car FOREIGN KEY (car_id) REFERENCES cars(car_id) ON DELETE CASCADE,
+  CONSTRAINT fk_cert_seller FOREIGN KEY (seller_id) REFERENCES sellers(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+
 // Identify logged-in seller
 $seller_id = isset($_SESSION['user_id']) ? intval($_SESSION['user_id']) : 0;
 $ownsCar = ($seller_id > 0 && isset($car['seller_id']) && intval($car['seller_id']) === $seller_id);
+
+// Handle seller certification request
+if ($ownsCar && $_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['request_certified'])) {
+  // Only allow when listing is open and not already certified
+  $isOpen = (!isset($car['listing_status']) || $car['listing_status']===null || $car['listing_status']==='open');
+  $alreadyCertified = (isset($car_details['car_condition']) && $car_details['car_condition']==='Certified');
+  if ($isOpen && !$alreadyCertified) {
+    // Check if a pending request already exists
+    $hasPending = false;
+    if ($st = $mysqli->prepare("SELECT 1 FROM certified_requests WHERE car_id=? AND seller_id=? AND status='requested' LIMIT 1")){
+      $st->bind_param('ii', $car_id, $seller_id); $st->execute(); $st->store_result();
+      $hasPending = $st->num_rows > 0; $st->close();
+    }
+    if (!$hasPending) {
+      if ($st = $mysqli->prepare("INSERT INTO certified_requests (car_id, seller_id, status) VALUES (?,?,'requested')")){
+        $st->bind_param('ii', $car_id, $seller_id); $st->execute(); $st->close();
+      }
+    }
+  }
+  header("Location: car_details.php?car_id=".$car_id);
+  exit();
+}
 
 // Handle accept/reject from this page (seller only)
 if ($ownsCar && $_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['booking_action'], $_POST['booking_id'])) {
@@ -328,6 +364,31 @@ function changeMain(src){
           <?php endif; ?>
         </div>
         <?php endif; ?>
+        <?php
+          // Certification request state for this car
+          $certState = null; // requested|approved|declined|null
+          if ($st = $mysqli->prepare("SELECT status FROM certified_requests WHERE car_id=? AND seller_id=? ORDER BY request_id DESC LIMIT 1")){
+            $st->bind_param('ii', $car_id, $seller_id); $st->execute(); $res=$st->get_result();
+            if ($row = $res->fetch_assoc()) { $certState = $row['status']; }
+            $st->close();
+          }
+          $isOpenListing = (!isset($car['listing_status']) || $car['listing_status']===null || $car['listing_status']==='open');
+          $isCertified = (isset($car_details['car_condition']) && $car_details['car_condition']==='Certified');
+        ?>
+        <?php if ($ownsCar && $isOpenListing && !$isCertified): ?>
+          <div class="bg-white rounded-lg shadow p-4 mb-4">
+            <h3 class="text-lg font-semibold text-green-700 mb-2">Certified Check</h3>
+            <?php if ($certState === 'requested'): ?>
+              <div class="text-sm text-yellow-800 bg-yellow-50 border border-yellow-200 rounded p-3">Your certification request is pending admin review.</div>
+            <?php elseif ($certState === 'declined'): ?>
+              <div class="text-sm text-red-800 bg-red-50 border border-red-200 rounded p-3 mb-2">Your previous certification request was declined. You may update details and request again.</div>
+              <form method="post"><button type="submit" name="request_certified" value="1" class="mt-2 bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded">Get a certified check</button></form>
+            <?php else: ?>
+              <form method="post"><button type="submit" name="request_certified" value="1" class="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded">Get a certified check</button></form>
+            <?php endif; ?>
+            <p class="text-xs text-gray-500 mt-2">If approved by admin, your car’s condition will be set to <strong>Certified</strong>.</p>
+          </div>
+        <?php endif; ?>
         <div class="bg-gray-50 rounded-lg shadow p-4 mb-4">
           <h3 class="text-lg font-semibold mb-2 text-red-600">Overview</h3>
           <div class="grid grid-cols-2 gap-x-6 gap-y-2">
@@ -382,7 +443,7 @@ function changeMain(src){
               <option value="New" <?php echo $cond==='New' ? 'selected' : ''; ?>>New</option>
               <option value="Reconditioned" <?php echo $cond==='Reconditioned' ? 'selected' : ''; ?>>Reconditioned</option>
               <option value="Used" <?php echo $cond==='Used' ? 'selected' : ''; ?>>Used</option>
-              <option value="Certified" <?php echo $cond==='Certified' ? 'selected' : ''; ?>>Certified</option>
+              <option value="Certified" <?php echo $cond==='Certified' ? 'selected' : ''; ?> disabled>Certified (admin approval)</option>
             </select>
             <div class="col-span-2 flex justify-end gap-2">
               <button type="button" id="openMoreDetails" class="bg-white border border-blue-600 text-blue-600 px-4 py-2 rounded hover:bg-blue-50">More Details</button>

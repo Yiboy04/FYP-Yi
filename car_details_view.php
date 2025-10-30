@@ -115,6 +115,7 @@ $mysqli->query("CREATE TABLE IF NOT EXISTS bookings (
   buyer_id INT NOT NULL,
   seller_id INT NOT NULL,
   status ENUM('pending','accepted','rejected','cancelled') NOT NULL DEFAULT 'pending',
+  booking_date DATE NULL,
   created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
   decision_at TIMESTAMP NULL DEFAULT NULL,
   INDEX idx_booking_car_status (car_id, status),
@@ -122,43 +123,80 @@ $mysqli->query("CREATE TABLE IF NOT EXISTS bookings (
   CONSTRAINT fk_b_buyer FOREIGN KEY (buyer_id) REFERENCES buyers(id) ON DELETE CASCADE,
   CONSTRAINT fk_b_seller FOREIGN KEY (seller_id) REFERENCES sellers(id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+// Ensure column and index exist for booking date (idempotent)
+$mysqli->query("ALTER TABLE bookings ADD COLUMN IF NOT EXISTS booking_date DATE NULL AFTER status");
+$mysqli->query("CREATE INDEX IF NOT EXISTS idx_booking_car_date ON bookings(car_id, booking_date)");
 
-// Handle buyer booking request
+// Handle buyer booking request with date selection
 $bookingMsg = '';
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['book_car']) && !empty($_SESSION['user_id']) && !empty($_SESSION['role']) && $_SESSION['role']==='buyer') {
   $buyerId = intval($_SESSION['user_id']);
-  // Allow booking only for open listings
-  $isOpen = (!isset($car['listing_status']) || $car['listing_status']===null || $car['listing_status']==='open');
-  if ($isOpen) {
-    // Check if an active booking exists in context of current car status
-    // Active means: pending while car is open, or accepted while car is negotiating
-    $sqlActive = "SELECT b.booking_id FROM bookings b JOIN cars c ON c.car_id=b.car_id
-                  WHERE b.car_id=? AND (
-                    (b.status='pending' AND (c.listing_status IS NULL OR c.listing_status='open')) OR
-                    (b.status='accepted' AND c.listing_status='negotiating')
-                  ) LIMIT 1";
-    if ($chk = $mysqli->prepare($sqlActive)) {
-      $chk->bind_param('i', $car_id);
-      $chk->execute();
-      $exists = $chk->get_result()->fetch_assoc();
-      $chk->close();
-      if ($exists) {
-        $bookingMsg = 'This car already has an active booking.';
+  $reqDateRaw = trim((string)($_POST['booking_date'] ?? ''));
+  $reqDate = null;
+
+  // Validate date and prevent past dates
+  if ($reqDateRaw !== '') {
+    $dt = DateTime::createFromFormat('Y-m-d', $reqDateRaw);
+    $valid = $dt && $dt->format('Y-m-d') === $reqDateRaw;
+    if ($valid) {
+      $today = new DateTime('today');
+      if ($dt < $today) {
+        $bookingMsg = 'Please choose a date that is today or later.';
       } else {
-        if ($ins = $mysqli->prepare("INSERT INTO bookings (car_id, buyer_id, seller_id, status) VALUES (?,?,?, 'pending')")) {
-          $sellerIdForCar = intval($car['seller_id'] ?? 0);
-          $ins->bind_param('iii', $car_id, $buyerId, $sellerIdForCar);
-          if ($ins->execute()) {
-            $bookingMsg = 'Booking request sent to the seller.';
-          } else {
-            $bookingMsg = 'Failed to create booking.';
-          }
-          $ins->close();
-        }
+        $reqDate = $dt->format('Y-m-d');
       }
+    } else {
+      $bookingMsg = 'Invalid date format.';
     }
   } else {
+    $bookingMsg = 'Please choose a booking date.';
+  }
+
+  // Allow booking for open or negotiating listings (multiple bookings allowed, not on the same date)
+  $ls = isset($car['listing_status']) ? strtolower(trim((string)$car['listing_status'])) : null;
+  $canBookListing = ($ls===null || $ls==='' || $ls==='open' || $ls==='negotiating');
+  if ($bookingMsg === '' && !$canBookListing) {
     $bookingMsg = 'This listing is not open for booking.';
+  }
+
+  // Ensure buyer doesn't already have an active booking for this car (any date)
+  if ($bookingMsg === '') {
+    if ($st = $mysqli->prepare("SELECT 1 FROM bookings WHERE car_id=? AND buyer_id=? AND status IN ('pending','accepted') LIMIT 1")) {
+      $st->bind_param('ii', $car_id, $buyerId);
+      $st->execute();
+      $hasMine = $st->get_result()->fetch_row();
+      $st->close();
+      if ($hasMine) {
+        $bookingMsg = 'You already have an active booking for this car.';
+      }
+    }
+  }
+
+  // Ensure no other active booking exists on the same date for this car
+  if ($bookingMsg === '') {
+    if ($st = $mysqli->prepare("SELECT 1 FROM bookings WHERE car_id=? AND booking_date=? AND status IN ('pending','accepted') LIMIT 1")) {
+      $st->bind_param('is', $car_id, $reqDate);
+      $st->execute();
+      $exists = $st->get_result()->fetch_row();
+      $st->close();
+      if ($exists) {
+        $bookingMsg = 'This date is already booked. Please choose another date.';
+      }
+    }
+  }
+
+  // Insert booking
+  if ($bookingMsg === '') {
+    if ($ins = $mysqli->prepare("INSERT INTO bookings (car_id, buyer_id, seller_id, status, booking_date) VALUES (?,?,?, 'pending', ?)")) {
+      $sellerIdForCar = intval($car['seller_id'] ?? 0);
+      $ins->bind_param('iiis', $car_id, $buyerId, $sellerIdForCar, $reqDate);
+      if ($ins->execute()) {
+        $bookingMsg = 'Booking request sent to the seller.';
+      } else {
+        $bookingMsg = 'Failed to create booking.';
+      }
+      $ins->close();
+    }
   }
 }
 
@@ -177,8 +215,8 @@ if (!empty($_SESSION['user_id']) && !empty($_SESSION['role']) && $_SESSION['role
 // Check if any active booking exists (context-aware)
 $sqlHas = "SELECT 1 FROM bookings b JOIN cars c ON c.car_id=b.car_id
            WHERE b.car_id=? AND (
-             (b.status='pending' AND (c.listing_status IS NULL OR c.listing_status='open')) OR
-             (b.status='accepted' AND c.listing_status='negotiating')
+             (b.status='pending' AND (c.listing_status IS NULL OR LOWER(TRIM(c.listing_status))='open' OR TRIM(c.listing_status)='')) OR
+             (b.status='accepted' AND LOWER(TRIM(c.listing_status))='negotiating')
            ) LIMIT 1";
 if ($st = $mysqli->prepare($sqlHas)) {
   $st->bind_param('i', $car_id);
@@ -190,12 +228,13 @@ if ($st = $mysqli->prepare($sqlHas)) {
 
 // Determine if the current user's last booking is active under current car status
 $listingStatus = $car['listing_status'] ?? null;
-$isOpen = (!isset($listingStatus) || $listingStatus===null || $listingStatus==='open');
+$lsNorm = isset($listingStatus) ? strtolower(trim((string)$listingStatus)) : null;
+$isOpen = ($lsNorm===null || $lsNorm==='' || $lsNorm==='open');
 $myBookingActive = false;
 if ($myBooking) {
   if ($myBooking['status'] === 'pending' && $isOpen) {
     $myBookingActive = true;
-  } elseif ($myBooking['status'] === 'accepted' && $listingStatus === 'negotiating') {
+  } elseif ($myBooking['status'] === 'accepted' && $lsNorm === 'negotiating') {
     $myBookingActive = true;
   }
 }
@@ -279,6 +318,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['submit_report'])) {
 <meta charset="utf-8">
 <title><?php echo htmlspecialchars($car['make'].' '.$car['model']); ?> Details</title>
 <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+<!-- Flatpickr datepicker for disabling booked dates -->
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr@4.6.13/dist/flatpickr.min.css">
+<script src="https://cdn.jsdelivr.net/npm/flatpickr@4.6.13/dist/flatpickr.min.js"></script>
 <script>
 function changeMain(src){
   document.getElementById('mainImage').src=src;
@@ -415,12 +457,14 @@ function changeMain(src){
                 </a>
               <?php endif; ?>
               <?php
-                // Booking controls for buyers (context-aware)
-                $isOpen = (!isset($car['listing_status']) || $car['listing_status']===null || $car['listing_status']==='open');
+                // Booking controls for buyers: button opens modal to choose date
+                // Enable when listing is open or negotiating (NULL/blank treated as open)
+                $lsTmp = isset($car['listing_status']) ? strtolower(trim((string)$car['listing_status'])) : null;
+                $canBookNow = ($lsTmp===null || $lsTmp==='' || $lsTmp==='open' || $lsTmp==='negotiating');
                 if (!empty($_SESSION['role']) && $_SESSION['role']==='buyer'):
               ?>
                 <?php if (!empty($bookingMsg)): ?>
-                  <div class="text-sm text-gray-700 bg-gray-100 px-3 py-2 rounded"><?php echo htmlspecialchars($bookingMsg); ?></div>
+                  <div class="w-full text-sm <?php echo strpos($bookingMsg,'Booking request')===0 ? 'bg-green-100 text-green-700' : 'bg-yellow-100 text-yellow-800'; ?> px-3 py-2 rounded"><?php echo htmlspecialchars($bookingMsg); ?></div>
                 <?php endif; ?>
                 <?php if ($myBookingActive): ?>
                   <?php if ($myBooking['status']==='pending'): ?>
@@ -433,11 +477,8 @@ function changeMain(src){
                   <?php else: ?>
                     <div class="inline-flex items-center gap-2 bg-blue-600 text-white px-4 py-2 rounded-lg font-semibold">Booking Accepted</div>
                   <?php endif; ?>
-                <?php elseif ($isOpen && !$hasActiveBooking): ?>
-                  <form method="post" class="inline">
-                    <input type="hidden" name="book_car" value="1">
-                    <button type="submit" class="inline-flex items-center gap-2 bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-lg font-semibold">Booking</button>
-                  </form>
+                <?php elseif ($canBookNow): ?>
+                  <button type="button" id="openBookingModal" class="inline-flex items-center gap-2 bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-lg font-semibold">Booking</button>
                 <?php else: ?>
                   <div class="inline-flex items-center gap-2 bg-gray-300 text-gray-700 px-4 py-2 rounded-lg font-semibold">Booking Unavailable</div>
                 <?php endif; ?>
@@ -658,11 +699,49 @@ function changeMain(src){
     </div>
   </div>
 </div>
+<!-- Booking Modal -->
+<div id="bookingModal" class="hidden fixed inset-0 z-50" aria-modal="true" role="dialog">
+  <div id="bookingBackdrop" class="absolute inset-0 bg-black bg-opacity-50 opacity-0 transition-opacity duration-200"></div>
+  <div class="absolute inset-0 flex items-start justify-center p-4 pt-16 md:pt-24">
+    <div id="bookingPanel" class="bg-white w-full max-w-lg rounded-lg shadow-xl transform scale-95 opacity-0 transition-all duration-200 overflow-y-auto" style="max-height:80vh;">
+      <form method="post">
+        <div class="flex items-center justify-between px-5 py-3 border-b">
+          <h3 class="text-lg font-semibold">Book a viewing date</h3>
+          <button type="button" id="closeBookingX" class="text-gray-500 hover:text-gray-700" aria-label="Close">✕</button>
+        </div>
+        <div class="p-5 space-y-4">
+          <div class="bg-gray-50 rounded p-3">
+            <h4 class="font-semibold text-gray-800 mb-2">Seller Information</h4>
+            <div class="grid grid-cols-1 gap-1 text-sm text-gray-700">
+              <div><span class="font-medium">Name:</span> <?php echo htmlspecialchars($seller['name'] ?? ''); ?></div>
+              <?php if (!empty($seller['phone'])): ?>
+                <div><span class="font-medium">Phone:</span> <a class="text-blue-600 hover:underline" href="tel:<?php echo htmlspecialchars($seller['phone']); ?>"><?php echo htmlspecialchars($seller['phone']); ?></a></div>
+              <?php endif; ?>
+              <?php if (!empty($seller['email'])): ?>
+                <div><span class="font-medium">Email:</span> <a class="text-blue-600 hover:underline" href="mailto:<?php echo htmlspecialchars($seller['email']); ?>"><?php echo htmlspecialchars($seller['email']); ?></a></div>
+              <?php endif; ?>
+            </div>
+          </div>
+          <div>
+            <label for="booking_date" class="block text-sm text-gray-700 mb-1">Choose date</label>
+            <input type="text" id="booking_date" name="booking_date" class="w-full border rounded px-3 py-2" placeholder="dd/mm/yyyy" required>
+            <p class="text-xs text-gray-500 mt-2">Each date can be booked by only one buyer for this car. Past and unavailable dates are disabled.</p>
+          </div>
+        </div>
+        <div class="px-5 py-3 border-t flex justify-end gap-3">
+          <button type="button" id="closeBooking" class="px-4 py-2 border rounded text-gray-800 hover:bg-gray-50">Cancel</button>
+          <button type="submit" name="book_car" value="1" class="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded">Confirm Booking</button>
+        </div>
+      </form>
+    </div>
+  </div>
+  <div class="sr-only" aria-live="polite" aria-atomic="true"></div>
+  </div>
 <!-- Report Modal -->
 <div id="reportModal" class="hidden fixed inset-0 z-50" aria-modal="true" role="dialog">
   <div id="reportBackdrop" class="absolute inset-0 bg-black bg-opacity-50 opacity-0 transition-opacity duration-200"></div>
-  <div class="absolute inset-0 flex items-center justify-center p-4">
-    <div id="reportPanel" class="bg-white w-full max-w-xl rounded-lg shadow-xl transform scale-95 opacity-0 transition-all duration-200">
+  <div class="absolute inset-0 flex items-start justify-center p-4 pt-16 md:pt-24">
+    <div id="reportPanel" class="bg-white w-full max-w-xl rounded-lg shadow-xl transform scale-95 opacity-0 transition-all duration-200 overflow-y-auto" style="max-height:80vh;">
       <form method="post">
         <div class="flex items-center justify-between px-5 py-3 border-b">
           <h3 class="text-lg font-semibold">Report this listing</h3>
@@ -859,6 +938,73 @@ function changeMain(src){
       backdrop && backdrop.classList.add('opacity-100');
       panel && (panel.classList.remove('opacity-0'), panel.classList.remove('scale-95'));
     });
+  }
+  function closeModal(){
+    if (!modal) return;
+    backdrop && backdrop.classList.remove('opacity-100');
+    panel && (panel.classList.add('opacity-0'), panel.classList.add('scale-95'));
+    setTimeout(function(){ modal.classList.add('hidden'); document.body.classList.remove('overflow-hidden'); }, 180);
+  }
+  if (openBtn) openBtn.addEventListener('click', openModal);
+  if (closeX) closeX.addEventListener('click', closeModal);
+  if (closeBtn) closeBtn.addEventListener('click', closeModal);
+  if (backdrop) backdrop.addEventListener('click', closeModal);
+  document.addEventListener('keydown', function(e){ if (e.key === 'Escape') closeModal(); });
+})();
+</script>
+<script>
+// Booking modal open/close
+(function(){
+  var openBtn = document.getElementById('openBookingModal');
+  var modal = document.getElementById('bookingModal');
+  var backdrop = document.getElementById('bookingBackdrop');
+  var panel = document.getElementById('bookingPanel');
+  var closeX = document.getElementById('closeBookingX');
+  var closeBtn = document.getElementById('closeBooking');
+  var dateInput = document.getElementById('booking_date');
+  var fpInstance = null;
+
+  function initDatepicker(disabledDates){
+    if (!dateInput || typeof flatpickr !== 'function') return;
+    if (fpInstance && typeof fpInstance.destroy === 'function') {
+      fpInstance.destroy();
+      fpInstance = null;
+    }
+    try {
+      fpInstance = flatpickr(dateInput, {
+        dateFormat: 'Y-m-d',        // submitted format (matches server)
+        altInput: true,
+        altFormat: 'd/m/Y',        // display format
+        minDate: 'today',
+        disableMobile: true,
+        disable: Array.isArray(disabledDates) ? disabledDates : []
+      });
+    } catch(e) {
+      // fallback: leave native input as-is
+    }
+  }
+
+  function fetchDisabledDatesAndInit(){
+    var url = 'booked_dates.php?car_id=<?php echo (int)$car_id; ?>';
+    try {
+      fetch(url, { credentials: 'same-origin' })
+        .then(function(r){ return r.ok ? r.json() : { dates: [] }; })
+        .then(function(data){ initDatepicker(data && Array.isArray(data.dates) ? data.dates : []); })
+        .catch(function(){ initDatepicker([]); });
+    } catch (e) {
+      initDatepicker([]);
+    }
+  }
+  function openModal(){
+    if (!modal) return;
+    modal.classList.remove('hidden');
+    document.body.classList.add('overflow-hidden');
+    requestAnimationFrame(function(){
+      backdrop && backdrop.classList.add('opacity-100');
+      panel && (panel.classList.remove('opacity-0'), panel.classList.remove('scale-95'));
+    });
+    // initialize datepicker with disabled dates each time modal opens (fresh data)
+    fetchDisabledDatesAndInit();
   }
   function closeModal(){
     if (!modal) return;

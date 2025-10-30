@@ -200,7 +200,7 @@ function safe($v){ return htmlspecialchars((string)$v); }
             return $isBetter ? 'text-green-600' : 'text-red-600';
           }
         ?>
-        <div class="mt-6 bg-white rounded-2xl shadow overflow-hidden">
+        <div class="mt-6 bg-white rounded-2xl shadow overflow-hidden max-w-4xl mx-auto">
           <div class="grid grid-cols-3 text-xs font-semibold text-gray-500 uppercase tracking-wide p-3 border-b">
             <div class="text-left">Car A</div>
             <div class="text-center">Metric</div>
@@ -209,12 +209,12 @@ function safe($v){ return htmlspecialchars((string)$v); }
           <div class="divide-y">
             <?php
               $rows = [
-                ['label'=>'Year','a'=>$yearA,'b'=>$yearB,'type'=>'higher'],
+                ['label'=>'Year','a'=>$yearA,'b'=>$yearB,'type'=>'higher','fmt'=>'year'],
                 ['label'=>'Price','a'=>$prA,'b'=>$prB,'type'=>'lower','fmt'=>'rm'],
                 ['label'=>'Mileage (km)','a'=>$miA,'b'=>$miB,'type'=>'lower'],
                 ['label'=>'Horsepower (hp)','a'=>$hpA,'b'=>$hpB,'type'=>'higher'],
                 ['label'=>'Torque (Nm)','a'=>$tqA,'b'=>$tqB,'type'=>'higher'],
-                ['label'=>'Engine Capacity (L)','a'=>$carA['engine_capacity']??null,'b'=>$carB['engine_capacity']??null,'type'=>'higher'],
+                ['label'=>'Engine Capacity (L)','a'=>$carA['engine_capacity']??null,'b'=>$carB['engine_capacity']??null,'type'=>'higher','fmt'=>'engine'],
                 ['label'=>'Transmission','a'=>$carA['transmission']??'','b'=>$carB['transmission']??''],
                 ['label'=>'Fuel','a'=>$carA['fuel']??'','b'=>$carB['fuel']??''],
                 ['label'=>'Drive System','a'=>$carA['drive_system']??'','b'=>$carB['drive_system']??''],
@@ -227,8 +227,22 @@ function safe($v){ return htmlspecialchars((string)$v); }
               ];
               foreach ($rows as $r):
                 $a = $r['a']; $b = $r['b']; $lab = $r['label']; $type = $r['type'] ?? null; $fmt = $r['fmt'] ?? null;
-                $dispA = ($fmt==='rm') ? fmtRM($a) : (is_numeric($a) ? number_format((float)$a) : safe($a));
-                $dispB = ($fmt==='rm') ? fmtRM($b) : (is_numeric($b) ? number_format((float)$b) : safe($b));
+                // Formatting per field
+                $dispA = '';
+                $dispB = '';
+                if ($fmt === 'rm') {
+                  $dispA = fmtRM($a);
+                  $dispB = fmtRM($b);
+                } elseif ($fmt === 'year') {
+                  $dispA = is_numeric($a) ? (string)intval($a) : safe($a);
+                  $dispB = is_numeric($b) ? (string)intval($b) : safe($b);
+                } elseif ($fmt === 'engine') {
+                  $dispA = is_numeric($a) ? number_format((float)$a, 1) : safe($a);
+                  $dispB = is_numeric($b) ? number_format((float)$b, 1) : safe($b);
+                } else {
+                  $dispA = is_numeric($a) ? number_format((float)$a) : safe($a);
+                  $dispB = is_numeric($b) ? number_format((float)$b) : safe($b);
+                }
                 $clsA = $type ? betterBadge($a,$b,$type) : '';
                 $clsB = $type ? betterBadge($b,$a,$type) : '';
             ?>
@@ -265,9 +279,15 @@ function safe($v){ return htmlspecialchars((string)$v); }
         const m = (str||'').match(/^#?(\d+)/);
         return m ? m[1] : '';
       }
+      // Only set from typed numeric id if hidden is still empty;
+      // preserve IDs already mapped from suggestions.
       form?.addEventListener('submit', function(){
-        aHidden.value = extractId(aInput.value);
-        bHidden.value = extractId(bInput.value);
+        if (!aHidden.value) {
+          aHidden.value = extractId(aInput.value);
+        }
+        if (!bHidden.value) {
+          bHidden.value = extractId(bInput.value);
+        }
       });
     })();
 

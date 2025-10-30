@@ -55,6 +55,9 @@ $mysqli->query("CREATE TABLE IF NOT EXISTS bookings (
   CONSTRAINT fk_b_buyer FOREIGN KEY (buyer_id) REFERENCES buyers(id) ON DELETE CASCADE,
   CONSTRAINT fk_b_seller FOREIGN KEY (seller_id) REFERENCES sellers(id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+// Ensure booking_date column and index exist (idempotent)
+$mysqli->query("ALTER TABLE bookings ADD COLUMN IF NOT EXISTS booking_date DATE NULL AFTER status");
+$mysqli->query("CREATE INDEX IF NOT EXISTS idx_booking_car_date ON bookings(car_id, booking_date)");
 
 // ===== Filters (GET) and sorting =====
 // Read filter params
@@ -69,7 +72,10 @@ $f_max_price    = isset($_GET['max_price']) && $_GET['max_price'] !== '' ? float
 $f_sort         = isset($_GET['sort']) ? $_GET['sort'] : 'newest';
 
 // Build dynamic WHERE and ORDER BY
-$where = ["seller_id = ?", "(listing_status IS NULL OR listing_status='open')"];
+$where = [
+  "seller_id = ?",
+  "((listing_status IS NULL) OR TRIM(listing_status)='' OR LOWER(TRIM(listing_status)) IN ('open','negotiating'))"
+];
 $types = 'i';
 $params = [$seller_id];
 
@@ -250,6 +256,24 @@ if (!empty($carsRows)) {
   }
 }
 
+// ===== Accepted bookings for this seller (review section) =====
+$acceptedRows = [];
+$sqlAcc = "SELECT b.booking_id, b.car_id, b.booking_date, b.created_at, b.decision_at,
+                   u.name AS buyer_name, u.email AS buyer_email, u.phone AS buyer_phone,
+                   c.make, c.model, c.year, c.price
+            FROM bookings b
+            JOIN buyers u ON u.id = b.buyer_id
+            JOIN cars c ON c.car_id = b.car_id
+            WHERE b.seller_id = ? AND b.status = 'accepted'
+            ORDER BY COALESCE(b.booking_date, DATE(b.created_at)) ASC, b.booking_id DESC";
+if ($stAcc = $mysqli->prepare($sqlAcc)) {
+  $stAcc->bind_param('i', $seller_id);
+  $stAcc->execute();
+  $resAcc = $stAcc->get_result();
+  while ($row = $resAcc->fetch_assoc()) { $acceptedRows[] = $row; }
+  $stAcc->close();
+}
+
 // helper to fetch first image
 function getFirstImage($mysqli, $car_id) {
   // Try to get thumbnail first
@@ -327,6 +351,7 @@ function updateModelOptionsFilter(makeSelect, modelSelectId, selectedModel='') {
     <nav>
       <ul class="flex gap-6">
         <li><a href="seller_main.php" class="hover:underline">Dashboard</a></li>
+        <li><a href="seller_bookings.php" class="hover:underline">Bookings</a></li>
         <li><a href="seller_profile.php" class="hover:underline">Profile</a></li>
         <li><a href="logout.php" class="hover:underline">Logout</a></li>
       </ul>
@@ -344,6 +369,15 @@ function updateModelOptionsFilter(makeSelect, modelSelectId, selectedModel='') {
     </button>
     <a href="unlist_car.php" class="bg-gray-700 text-white px-4 py-2 rounded hover:bg-gray-800">Unlisted Cars</a>
     <button type="button" onclick="toggleModal('filterModal')" class="bg-red-600 text-white px-4 py-2 rounded hover:bg-red-700">Filter</button>
+  </div>
+
+  <!-- Shortcut to Bookings page -->
+  <div class="bg-white rounded-xl shadow p-4 mb-6 flex items-center justify-between">
+    <div>
+      <h2 class="text-lg font-semibold">Manage your bookings</h2>
+      <p class="text-sm text-gray-600">Review accepted and pending bookings on a dedicated page.</p>
+    </div>
+    <a href="seller_bookings.php" class="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded">Open Bookings</a>
   </div>
 
   <!-- Filter Modal -->

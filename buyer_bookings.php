@@ -35,15 +35,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 }
 
 // Fetch buyer bookings: Pending (car still open) and Accepted (car negotiating)
-$sql = "SELECT b.booking_id, b.car_id, b.status, b.created_at, b.decision_at,
+$sql = "SELECT b.booking_id, b.car_id, b.status, b.created_at, b.decision_at, b.booking_date,
                c.make, c.model, c.variant, c.year, c.price, c.mileage, c.transmission
         FROM bookings b
         JOIN cars c ON b.car_id = c.car_id
         WHERE b.buyer_id = ?
           AND (
-            (b.status = 'pending' AND (c.listing_status IS NULL OR c.listing_status = '' OR c.listing_status = 'open'))
+            (b.status = 'pending' AND (c.listing_status IS NULL OR TRIM(c.listing_status) = '' OR LOWER(TRIM(c.listing_status)) = 'open'))
             OR
-            (b.status = 'accepted' AND c.listing_status = 'negotiating')
+            (b.status = 'accepted')
           )
         ORDER BY FIELD(b.status,'pending','accepted'), COALESCE(b.decision_at, b.created_at) DESC";
 $stmt = $mysqli->prepare($sql);
@@ -145,6 +145,9 @@ if (!empty($carIds)) {
                     <h3 class="text-lg font-bold truncate"><?php echo htmlspecialchars($b['make'].' '.$b['model']); ?></h3>
                     <?php if (!empty($b['variant'])): ?><div class="text-sm text-gray-600 truncate"><?php echo htmlspecialchars($b['variant']); ?></div><?php endif; ?>
                     <div class="text-xs text-gray-500 mt-1">Requested on: <?php echo htmlspecialchars($b['created_at']); ?></div>
+                    <?php if (!empty($b['booking_date'])): ?>
+                      <div class="text-xs text-gray-700 mt-0.5">Viewing date: <?php echo htmlspecialchars($b['booking_date']); ?></div>
+                    <?php endif; ?>
                   </div>
                   <div class="text-right">
                     <div class="text-red-600 font-extrabold text-xl whitespace-nowrap">RM <?php echo number_format((float)$b['price'], 0); ?></div>
@@ -186,6 +189,9 @@ if (!empty($carIds)) {
                     <h3 class="text-lg font-bold truncate"><?php echo htmlspecialchars($b['make'].' '.$b['model']); ?></h3>
                     <?php if (!empty($b['variant'])): ?><div class="text-sm text-gray-600 truncate"><?php echo htmlspecialchars($b['variant']); ?></div><?php endif; ?>
                     <div class="text-xs text-gray-500 mt-1">Accepted on: <?php echo htmlspecialchars($b['decision_at'] ?? $b['created_at']); ?></div>
+                    <?php if (!empty($b['booking_date'])): ?>
+                      <div class="text-xs text-gray-700 mt-0.5">Viewing date: <?php echo htmlspecialchars($b['booking_date']); ?></div>
+                    <?php endif; ?>
                   </div>
                   <div class="text-right">
                     <div class="text-red-600 font-extrabold text-xl whitespace-nowrap">RM <?php echo number_format((float)$b['price'], 0); ?></div>

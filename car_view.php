@@ -122,6 +122,7 @@ if ($carId > 0) {
     #car-container:active { cursor: grabbing; }
     #car-container img {
       width: 100%; height: 100%; object-fit: contain;
+      background: #000; /* ensure letterbox is black behind image */
       display: none;
     }
     #car-container img.active { display: block; }
@@ -144,6 +145,15 @@ if ($carId > 0) {
     @keyframes spin { 
       0% { transform: rotate(0deg); }
       100% { transform: rotate(360deg); }
+    }
+    /* Fullscreen sizing for the viewer container */
+    #car-container:fullscreen, #car-container:-webkit-full-screen, #car-container:-ms-fullscreen {
+      width: 100vw;
+      height: 100vh;
+      max-width: none;
+      border-radius: 0;
+      border: none;
+      background: #000; /* Black out empty space in fullscreen */
     }
     button:disabled {
       opacity: 0.5;
@@ -177,6 +187,23 @@ if ($carId > 0) {
 
   <!-- MAIN CONTENT -->
   <main class="container mx-auto py-10">
+    <?php if ($carId > 0): ?>
+      <div class="mb-4">
+        <a href="car_details_view.php?car_id=<?php echo (int)$carId; ?>"
+           class="inline-flex items-center gap-2 bg-gray-200 hover:bg-gray-300 text-gray-800 px-4 py-2 rounded">
+          <span>←</span>
+          <span>Back to Details</span>
+        </a>
+      </div>
+    <?php else: ?>
+      <div class="mb-4">
+        <button type="button" onclick="history.back();"
+                class="inline-flex items-center gap-2 bg-gray-200 hover:bg-gray-300 text-gray-800 px-4 py-2 rounded">
+          <span>←</span>
+          <span>Back</span>
+        </button>
+      </div>
+    <?php endif; ?>
     <h2 class="text-3xl font-bold text-center mb-6 text-gray-800">360° Car View</h2>
     <?php if (!empty($carDisplayName)): ?>
       <h2 class="text-2xl md:text-3xl font-bold text-center mb-6 text-gray-800"><?php echo htmlspecialchars($carDisplayName); ?></h2>
@@ -194,6 +221,11 @@ if ($carId > 0) {
               class="bg-gray-600 hover:bg-gray-700 text-white px-4 py-2 rounded"
               <?php echo empty($interiorImages) ? 'disabled' : ''; ?>>
         Interior
+      </button>
+      <button id="fullscreenBtn" 
+              class="bg-black bg-opacity-70 hover:bg-opacity-90 text-white px-4 py-2 rounded"
+              title="Toggle fullscreen">
+        Fullscreen
       </button>
     </div>
 
@@ -283,6 +315,34 @@ if ($carId > 0) {
       currentSet = 'interior';
       updateImageList('interior');
     });
+
+    // Fullscreen toggle
+    const fsBtn = document.getElementById('fullscreenBtn');
+    function isFullscreen(){
+      return document.fullscreenElement || document.webkitFullscreenElement || document.msFullscreenElement;
+    }
+    function enterFullscreen(el){
+      if (el.requestFullscreen) return el.requestFullscreen();
+      if (el.webkitRequestFullscreen) return el.webkitRequestFullscreen();
+      if (el.msRequestFullscreen) return el.msRequestFullscreen();
+    }
+    function exitFullscreen(){
+      if (document.exitFullscreen) return document.exitFullscreen();
+      if (document.webkitExitFullscreen) return document.webkitExitFullscreen();
+      if (document.msExitFullscreen) return document.msExitFullscreen();
+    }
+    function updateFsBtn(){
+      if (isFullscreen()) fsBtn.textContent = 'Exit Fullscreen';
+      else fsBtn.textContent = 'Fullscreen';
+    }
+    fsBtn?.addEventListener('click', () => {
+      if (!isFullscreen()) enterFullscreen(container);
+      else exitFullscreen();
+    });
+    document.addEventListener('fullscreenchange', updateFsBtn);
+    document.addEventListener('webkitfullscreenchange', updateFsBtn);
+    document.addEventListener('msfullscreenchange', updateFsBtn);
+    updateFsBtn();
   </script>
 </body>
 </html>

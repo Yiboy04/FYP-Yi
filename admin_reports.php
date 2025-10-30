@@ -82,6 +82,8 @@ if ($res) { while ($row = $res->fetch_assoc()) { $reports[] = $row; } }
         <a href="admin_users.php?type=buyers" class="block px-3 py-2 rounded hover:bg-red-500 text-white">Buyers</a>
         <a href="admin_users.php?type=sellers" class="block px-3 py-2 rounded hover:bg-red-500 text-white">Sellers</a>
         <a href="admin_cars.php" class="block px-3 py-2 rounded hover:bg-red-500 text-white">Cars</a>
+        <a href="admin_bookings.php" class="block px-3 py-2 rounded hover:bg-red-500 text-white">Bookings</a>
+        <a href="admin_certified.php" class="block px-3 py-2 rounded bg-red-500 text-white font-medium">Certified Requests</a>
         <a href="admin_reports.php" class="block px-3 py-2 rounded bg-red-500 font-medium text-white">Reports</a>
         <a href="admin_logout.php" class="block px-3 py-2 rounded hover:bg-red-500 text-white">Logout</a>
       </nav>
